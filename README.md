@@ -16,6 +16,8 @@ previews, waveform editing, and incremental sync.
 
 #### 🔊 [Bandcamp] / [Soundcloud] / [Apple Music] / [Spotify]
 
+<br />
+
 ## Features
 
 - 🎛️ Pad management — Move and swap pads using drag & drop.
