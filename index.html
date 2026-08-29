@@ -1,14 +1,90 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + Vue + Typescript App</title>
-  </head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pad Bandit</title>
+    <style>
+      html,
+      body,
+      #app {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
+      }
 
+      .app-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+      }
+
+      .fading-circle {
+        position: relative;
+        width: 40px;
+        height: 40px;
+      }
+
+      .fading-circle-dot {
+        position: absolute;
+        inset: 0;
+        transform: rotate(calc(var(--dot) * 30deg));
+      }
+
+      .fading-circle-dot::before {
+        display: block;
+        width: 15%;
+        height: 15%;
+        margin: 0 auto;
+        content: '';
+        background-color: #267ba0;
+        border-radius: 100%;
+        animation: fading-circle-dot 1.2s infinite ease-in-out both;
+        animation-delay: calc(var(--dot) * 0.1s - 1.2s);
+      }
+
+      @keyframes fading-circle-dot {
+        0%,
+        39%,
+        100% {
+          opacity: 0;
+        }
+
+        40% {
+          opacity: 1;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .fading-circle-dot::before {
+          animation-duration: 3.6s;
+        }
+      }
+    </style>
+  </head>
   <body>
-    <div id="app"></div>
+    <noscript>This editor needs JavaScript to run.</noscript>
+    <div id="app">
+      <div class="app-loading">
+        <div class="fading-circle">
+          <span class="fading-circle-dot" style="--dot: 0"></span>
+          <span class="fading-circle-dot" style="--dot: 1"></span>
+          <span class="fading-circle-dot" style="--dot: 2"></span>
+          <span class="fading-circle-dot" style="--dot: 3"></span>
+          <span class="fading-circle-dot" style="--dot: 4"></span>
+          <span class="fading-circle-dot" style="--dot: 5"></span>
+          <span class="fading-circle-dot" style="--dot: 6"></span>
+          <span class="fading-circle-dot" style="--dot: 7"></span>
+          <span class="fading-circle-dot" style="--dot: 8"></span>
+          <span class="fading-circle-dot" style="--dot: 9"></span>
+          <span class="fading-circle-dot" style="--dot: 10"></span>
+          <span class="fading-circle-dot" style="--dot: 11"></span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

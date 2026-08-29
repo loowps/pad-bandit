@@ -1,2 +1,12 @@
+engineStrict: true
+strictDepBuilds: true
+
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 43200
+
 allowBuilds:
   esbuild: true
+
+overrides:
+  fastq: 1.20.1

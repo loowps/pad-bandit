@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "pad-bandit-tauri",
-        "width": 800,
-        "height": 600
+        "title": "Pad Bandit",
+        "width": 1230,
+        "height": 900,
+        "center": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {

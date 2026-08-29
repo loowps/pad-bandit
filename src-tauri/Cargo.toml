@@ -14,5 +14,14 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "2"
+cpal = "0.18.2"
+rubato = "5.0.0"
+rtrb = "0.4.0"
+symphonia = { version = "0.6.1", features = ["wav", "aiff", "mp3", "flac", "pcm"] }
+
+[dev-dependencies]
+tempfile = "3"
