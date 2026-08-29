@@ -20,47 +20,52 @@
         align-items: center;
         justify-content: center;
         height: 100%;
+        background-color: #f5f5f7;
       }
 
-      .fading-circle {
-        position: relative;
-        width: 40px;
-        height: 40px;
+      .app-loading-logo {
+        width: 99px;
+        height: auto;
       }
 
-      .fading-circle-dot {
-        position: absolute;
-        inset: 0;
-        transform: rotate(calc(var(--dot) * 30deg));
+      .app-loading-body {
+        fill: #4c5363;
       }
 
-      .fading-circle-dot::before {
-        display: block;
-        width: 15%;
-        height: 15%;
-        margin: 0 auto;
-        content: '';
-        background-color: #267ba0;
-        border-radius: 100%;
-        animation: fading-circle-dot 1.2s infinite ease-in-out both;
-        animation-delay: calc(var(--dot) * 0.1s - 1.2s);
+      .app-loading-pad {
+        fill: #a9b7c4;
+        transform-box: fill-box;
+        transform-origin: center;
       }
 
-      @keyframes fading-circle-dot {
-        0%,
-        39%,
-        100% {
-          opacity: 0;
+      .app-loading-pad--lit {
+        animation: app-loading-pad 2.2s infinite ease-in-out;
+        animation-delay: calc(var(--pad) * 0.09s);
+      }
+
+      @keyframes app-loading-pad {
+        0% {
+          fill: #a9b7c4;
+          transform: scale(0.88);
         }
 
-        40% {
-          opacity: 1;
+        4%,
+        62% {
+          fill: #f58960;
+          transform: scale(1);
+        }
+
+        72%,
+        100% {
+          fill: #a9b7c4;
+          transform: scale(0.88);
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .fading-circle-dot::before {
-          animation-duration: 3.6s;
+        .app-loading-pad--lit {
+          fill: #f58960;
+          animation: none;
         }
       }
     </style>
@@ -69,20 +74,30 @@
     <noscript>This editor needs JavaScript to run.</noscript>
     <div id="app">
       <div class="app-loading">
-        <div class="fading-circle">
-          <span class="fading-circle-dot" style="--dot: 0"></span>
-          <span class="fading-circle-dot" style="--dot: 1"></span>
-          <span class="fading-circle-dot" style="--dot: 2"></span>
-          <span class="fading-circle-dot" style="--dot: 3"></span>
-          <span class="fading-circle-dot" style="--dot: 4"></span>
-          <span class="fading-circle-dot" style="--dot: 5"></span>
-          <span class="fading-circle-dot" style="--dot: 6"></span>
-          <span class="fading-circle-dot" style="--dot: 7"></span>
-          <span class="fading-circle-dot" style="--dot: 8"></span>
-          <span class="fading-circle-dot" style="--dot: 9"></span>
-          <span class="fading-circle-dot" style="--dot: 10"></span>
-          <span class="fading-circle-dot" style="--dot: 11"></span>
-        </div>
+        <svg
+          class="app-loading-logo"
+          viewBox="0 0 39.158 26.56"
+          xmlns="http://www.w3.org/2000/svg"
+          role="img"
+          aria-label="Loading"
+        >
+          <rect class="app-loading-body" x="0" y="0" width="39.158" height="26.56" rx="0.946" />
+
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 0" x="2.849" y="18.421" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad" x="11.810" y="18.421" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 1" x="20.771" y="18.421" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 2" x="29.733" y="18.421" width="6.577" height="5.513" rx="0.636" />
+
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 3" x="2.849" y="10.523" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 4" x="11.810" y="10.523" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 5" x="20.771" y="10.523" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 6" x="29.733" y="10.523" width="6.577" height="5.513" rx="0.636" />
+
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 7" x="2.849" y="2.626" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 8" x="11.810" y="2.626" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 9" x="20.771" y="2.626" width="6.577" height="5.513" rx="0.636" />
+          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 10" x="29.733" y="2.626" width="6.577" height="5.513" rx="0.636" />
+        </svg>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
