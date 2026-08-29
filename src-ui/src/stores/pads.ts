@@ -2,28 +2,28 @@ import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import type { CardState } from '@/card'
 import {
+  type AudioRef,
   BANK_NAMES,
-  PADS_PER_BANK,
+  type BankName,
   createDefaultSettings,
   createEmptyCard,
+  type Pad,
   padFromSlot,
   padFromSnapshot,
-  padIdForSlot,
-  snapshotOf,
-  type AudioRef,
-  type BankName,
-  type Pad,
   type PadId,
+  padIdForSlot,
+  PADS_PER_BANK,
   type PadSettings,
   type PadSnapshot,
+  snapshotOf,
 } from '@/domain/pad'
 import {
   cardPlan,
   clearIntent,
   keepIntent,
-  sampleIntent,
   type PadChange,
   type PadIntent,
+  sampleIntent,
 } from '@/domain/plan'
 import type { ProjectResolution } from '@/domain/project'
 

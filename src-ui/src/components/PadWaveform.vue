@@ -13,9 +13,9 @@ import {
   fitRegionToBuffer,
   minRegionFrames,
   moveRegion,
+  type Region,
   setRegionEnd,
   setRegionStart,
-  type Region,
 } from '@/domain/region'
 
 type DragMode = 'move' | 'start' | 'end' | 'scrub' | 'playhead'

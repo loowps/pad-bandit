@@ -1,6 +1,6 @@
-import { onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
+import { onScopeDispose, ref, type Ref, shallowRef, watch } from 'vue'
 import { refDebounced } from '@vueuse/core'
-import { onExactPeaks, requestPeaks, type Peaks } from '@/audio'
+import { onExactPeaks, type Peaks, requestPeaks } from '@/audio'
 
 const COLUMN_DEBOUNCE_MS = 120
 

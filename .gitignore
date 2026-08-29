@@ -9,16 +9,16 @@ lerna-debug.log*
 
 # Dependencies & build output
 node_modules
-dist
+src-ui/dist
 dist-ssr
-coverage
+src-ui/coverage
 *.local
 *.tsbuildinfo
 
 # OS / editor
 .DS_Store
-.vscode/*
-!.vscode/extensions.json
+src-ui/.vscode/*
+!src-ui/.vscode/extensions.json
 .idea
 *.suo
 *.ntvs*
@@ -27,7 +27,7 @@ coverage
 *.sw?
 
 # Linters
-.eslintcache
+src-ui/.eslintcache
 
 # Vitest
 __screenshots__/

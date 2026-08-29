@@ -4,13 +4,13 @@ import {
   applySync,
   cancelSync,
   onSyncProgress,
-  preflightSync,
   type Preflight,
+  preflightSync,
   type Problem,
   type SyncOutcome,
   type SyncProgress,
 } from '@/sync'
-import { previewRows, syncPlan, type PreviewRow } from '@/domain/sync'
+import { type PreviewRow, previewRows, syncPlan } from '@/domain/sync'
 import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
 import type { PadId } from '@/domain/pad'

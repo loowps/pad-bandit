@@ -4,12 +4,12 @@ import {
   createDefaultSettings,
   createPad,
   diskAudio,
-  padIdForSlot,
   type Pad,
   type PadId,
+  padIdForSlot,
   type SampleInfo,
 } from '@/domain/pad'
-import { cardPlan, clearIntent, keepIntent, sampleIntent, type PadIntent } from '@/domain/plan'
+import { cardPlan, clearIntent, keepIntent, type PadIntent, sampleIntent } from '@/domain/plan'
 import { editOf, projectDocument, resolveProject } from '@/domain/project'
 import type { Project } from '@/projects'
 

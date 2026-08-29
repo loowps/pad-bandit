@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.padbandit.app",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm --filter pad-bandit-ui run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "pnpm --filter pad-bandit-ui run build",
+    "frontendDist": "../src-ui/dist"
   },
   "app": {
     "windows": [

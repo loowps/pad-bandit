@@ -3,10 +3,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { usePadsStore } from '@/stores/pads'
 import {
   BANK_NAMES,
-  PADS_PER_BANK,
-  PAD_COUNT,
   createDefaultSettings,
   diskAudio,
+  PAD_COUNT,
+  PADS_PER_BANK,
 } from '@/domain/pad'
 
 describe('pads store', () => {

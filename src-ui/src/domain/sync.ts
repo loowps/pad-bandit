@@ -1,4 +1,4 @@
-import { audioSourceName, padIdForSlot, type Pad, type PadId } from '@/domain/pad'
+import { audioSourceName, type Pad, type PadId, padIdForSlot } from '@/domain/pad'
 import { editOf } from '@/domain/project'
 import type { PadChange } from '@/domain/plan'
 import type { PlannedAction, PlannedSlot, SyncPlan } from '@/sync'
