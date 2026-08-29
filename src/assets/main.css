@@ -6,18 +6,18 @@
   --text-default: #2c2e33;
   --text-muted: #7c7f87;
 
-  --pad-surface: #d8dee6;
+  --pad-surface: #cbd0d6;
   --pad-surface-hover: #e3ebf3;
-  --pad-border: #bfc7de;
+  --pad-border: #adb3c6;
   --pad-label: #8b8d92;
   --pad-label-strong: #3a3c40;
 
   --pad-surface-selected: #a6d6f7;
   --pad-border-selected: #5ea0ff;
 
-  --pad-surface-loaded: #ffac3c;
+  --pad-surface-loaded: #fd9167;
   --pad-surface-loaded-hover: #fabf73;
-  --pad-border-loaded: #ff8100;
+  --pad-border-loaded: #ff753c;
   --pad-prepared: #7a91b3;
   --pad-removed: #c2544a;
 
