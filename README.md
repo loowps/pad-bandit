@@ -1,6 +1,7 @@
 <div align="center">
 <img src="assets/pad-bandit-logo.png" alt="Pad Bandit Logo">
 </div>
+<br />
 
 > 🚧 **Work in progress**
 >
