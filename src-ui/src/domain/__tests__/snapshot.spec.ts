@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  snapshotOf,
   createDefaultSettings,
   createPad,
-  padMatchesSnapshot,
   diskAudio,
+  padMatchesSnapshot,
   sameAudioRef,
   sameSettings,
+  snapshotOf,
 } from '@/domain/pad'
 
 describe('sameAudioRef', () => {

@@ -3,26 +3,26 @@ import { defineStore } from 'pinia'
 import {
   clearJournal,
   forgetRecentProjects,
+  type MenuAction,
   onMenuAction,
   openProject,
   pickProjectToOpen,
   pickProjectToSave,
+  type Project,
   readJournal,
   recentProjects,
   saveProject,
   setWindowTitle,
-  writeJournal,
-  type MenuAction,
-  type Project,
   type StoredProject,
+  writeJournal,
 } from '@/projects'
 import {
-  portabilityOf,
-  projectDocument,
-  resolveProject,
   type OrphanPad,
   type Portability,
+  portabilityOf,
+  projectDocument,
   type ResolutionSummary,
+  resolveProject,
 } from '@/domain/project'
 import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'

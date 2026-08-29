@@ -1,10 +1,10 @@
 import {
-  sameAudioRef,
-  sameSettings,
   type AudioRef,
   type Pad,
   type PadId,
   type PadSnapshot,
+  sameAudioRef,
+  sameSettings,
 } from '@/domain/pad'
 
 export type PadIntent = { kind: 'keep' } | { kind: 'sample'; audio: AudioRef } | { kind: 'clear' }

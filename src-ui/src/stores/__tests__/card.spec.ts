@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
 import type { AppConfig } from '@/config'
-import type { CardSlot, CardState, CardPresence } from '@/card'
+import type { CardPresence, CardSlot, CardState } from '@/card'
 import { PAD_COUNT } from '@/domain/pad'
 
 vi.mock('@tauri-apps/api/core', () => ({

@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { useSamplePlayback, type PlaybackRequest } from '@/composables/useSamplePlayback'
+import { type PlaybackRequest, useSamplePlayback } from '@/composables/useSamplePlayback'
 
 export const PAD_PLAYBACK = 'pad'
 export const PREVIEW_PLAYBACK = 'preview'

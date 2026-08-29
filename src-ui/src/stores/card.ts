@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { readCard, readCardPresence, type CardState } from '@/card'
+import { type CardState, readCard, readCardPresence } from '@/card'
 import { getConfig, setCardPath } from '@/config'
 import { baseName, getFileSystemGateway } from '@/filesystem'
 import { usePadsStore } from '@/stores/pads'

@@ -1,7 +1,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
-import { addBrowseFolder, getConfig, removeBrowseFolder, type BrowseFolder } from '@/config'
-import { baseName, getFileSystemGateway, isAudioFile, type FsNode } from '@/filesystem'
+import { addBrowseFolder, type BrowseFolder, getConfig, removeBrowseFolder } from '@/config'
+import { baseName, type FsNode, getFileSystemGateway, isAudioFile } from '@/filesystem'
 
 export interface VisibleRow {
   node: FsNode

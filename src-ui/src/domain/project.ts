@@ -1,18 +1,18 @@
 import type { SampleInfo } from '@/card'
 import {
-  PAD_COUNT,
+  type AudioRef,
   cardAudio,
   diskAudio,
-  padIdForSlot,
-  type AudioRef,
   type Pad,
+  PAD_COUNT,
   type PadId,
+  padIdForSlot,
   type PadSettings,
 } from '@/domain/pad'
-import { clearIntent, keepIntent, sampleIntent, type PadIntent } from '@/domain/plan'
+import { clearIntent, keepIntent, type PadIntent, sampleIntent } from '@/domain/plan'
 import {
-  PROJECT_VERSION,
   type Project,
+  PROJECT_VERSION,
   type ProjectAudioRef,
   type ProjectEdit,
   type ProjectSlot,

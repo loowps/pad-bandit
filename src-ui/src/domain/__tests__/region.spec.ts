@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MIN_REGION_SECONDS,
   clampPlaybackStart,
   fitRegionToBuffer,
+  MIN_REGION_SECONDS,
   minRegionFrames,
   moveRegion,
   setRegionEnd,
