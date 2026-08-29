@@ -25,7 +25,8 @@
     "format": "prettier --write --experimental-cli src/",
     "tauri": "tauri",
     "tauri:dev": "tauri dev -- --locked",
-    "tauri:build": "tauri build -- --locked"
+    "tauri:build": "tauri build -- --locked",
+    "tauri:icon": "tauri icon"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

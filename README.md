@@ -1,9 +1,6 @@
-<br />
 <div align="center">
-<img src="assets/pad-bandit.svg" alt="Pad Bandit Logo" width="200">
+<img src="assets/pad-bandit-logo.png" alt="Pad Bandit Logo">
 </div>
-<br />
-<br />
 
 > 🚧 **Work in progress**
 >
