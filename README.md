@@ -3,14 +3,16 @@
 </div>
 <br />
 
+---
+
+![Pad Bandit](screenshot.png)
+
+## Alternative Roland SP-404SX Editor
+
 > 🚧 **Work in progress**
 >
 > Pad Bandit is a revival of an ever unfinished Electron + React personal project, now being rebuilt
 > with [Tauri] + [Vue.js]. Still in development.
-
-## Alternative Roland SP-404SX Editor
-
-![Pad Bandit](screenshot.png)
 
 Pad Bandit is an alternative editor for the Roland SP-404SX, inspired by tools like Bank Robber and [Super Pads].
 
