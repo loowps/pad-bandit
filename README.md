@@ -1,23 +1,22 @@
-<div align="center">
+> 🚧 **Work in progress**
+
+<h1 align="center">
 <img src="assets/pad-bandit-logo.png" alt="Pad Bandit Logo">
-</div>
+<br />
+</h1>
 <br />
 
-> 🚧 **Work in progress**
->
-> Pad Bandit is a revival of an ever unfinished Electron + React personal project, now being rebuilt
-> with [Tauri] + [Vue.js]. Still in development.
+Pad Bandit is an alternative editor for the Roland SP-404SX, inspired by tools like Bank Robber and [Super Pads]. It
+provides quality-of-life improvements to the original Wave Converter workflow, including drag and drop, file tree
+previews, waveform editing, and incremental sync.
 
-## Alternative Roland SP-404SX Editor
+<br />
 
 ![Pad Bandit](screenshot.png)
 
-Pad Bandit is an alternative editor for the Roland SP-404SX, inspired by tools like Bank Robber and [Super Pads].
-
-It provides quality-of-life improvements to the original Wave Converter workflow, including drag and drop, file tree
-previews, waveform editing, and incremental sync.
-
 #### 🔊 [Bandcamp] / [Soundcloud] / [Apple Music] / [Spotify]
+
+<br />
 
 ## Features
 
@@ -30,9 +29,9 @@ previews, waveform editing, and incremental sync.
 
 ## Tech Stack
 
-- Tauri — Desktop application
+- [Tauri] — Desktop application
 - Rust — Native functionality
-- Vue.js — UI
+- [Vue.js] — UI
 
 ## Disclaimer
 
