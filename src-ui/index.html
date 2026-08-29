@@ -50,12 +50,12 @@
         }
 
         4%,
-        52% {
+        62% {
           fill: #f58960;
           transform: scale(1);
         }
 
-        62%,
+        72%,
         100% {
           fill: #a9b7c4;
           transform: scale(0.88);
@@ -64,24 +64,8 @@
 
       @media (prefers-reduced-motion: reduce) {
         .app-loading-pad--lit {
-          animation-duration: 6s;
-          animation-delay: calc(var(--pad) * 0.25s);
-        }
-
-        @keyframes app-loading-pad {
-          0% {
-            fill: #a9b7c4;
-          }
-
-          4%,
-          52% {
-            fill: #f58960;
-          }
-
-          62%,
-          100% {
-            fill: #a9b7c4;
-          }
+          fill: #f58960;
+          animation: none;
         }
       }
     </style>
