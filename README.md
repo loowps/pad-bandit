@@ -1,9 +1,7 @@
-<div align="center">
+<h1 align="center">
 <img src="assets/pad-bandit-logo.png" alt="Pad Bandit Logo">
-</div>
 <br />
-
----
+</h1>
 
 ![Pad Bandit](screenshot.png)
 
