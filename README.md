@@ -1,5 +1,6 @@
 > 🚧 **Work in progress**
 
+<p></p>
 <div align="center">
   <picture>
     <source srcset="assets/pad-bandit-logo-light.svg" media="(prefers-color-scheme: dark)" />
@@ -14,6 +15,7 @@ Pad Bandit is an alternative editor for the Roland SP-404SX, inspired by tools l
 provides quality-of-life improvements to the original Wave Converter workflow, including drag and drop, file tree
 previews, waveform editing, and incremental sync.
 </p>
+<p></p>
 
 ![Pad Bandit](screenshot.png)
 
