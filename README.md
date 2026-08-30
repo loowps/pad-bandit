@@ -1,7 +1,10 @@
 > 🚧 **Work in progress**
 
 <h1 align="center">
-<img src="assets/pad-bandit-logo.png" alt="Pad Bandit Logo">
+  <picture>
+    <source srcset="assets/pad-bandit-logo-light.svg" media="(prefers-color-scheme: dark)" />
+    <img src="assets/pad-bandit-logo-dark.svg" alt="Pad Bandit Logo" />
+  </picture>
 <br />
 </h1>
 <br />
