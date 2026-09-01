@@ -7,7 +7,7 @@ use crate::audio::cache;
 use crate::audio::peaks::{self, Peaks};
 use crate::audio::play::{PlayRequest, PlaybackEvents, Player};
 use crate::card::{CardPresence, CardState};
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::error::Result;
 use crate::fs::Entry;
 use crate::projects::{Journal, PROJECT_EXTENSION, Project, StoredProject};
@@ -33,6 +33,18 @@ pub fn config_remove_folder(state: State<'_, AppState>, id: String) -> Result<Co
 #[tauri::command]
 pub fn config_set_card_path(state: State<'_, AppState>, path: Option<PathBuf>) -> Result<Config> {
     state.set_card_path(path.as_deref())
+}
+
+#[tauri::command]
+pub fn config_set_theme(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    theme: Theme,
+) -> Result<Config> {
+    let config = state.set_theme(theme)?;
+    apply_window_theme(&app, theme);
+    refresh_menu(&app, &state);
+    Ok(config)
 }
 
 #[tauri::command]
@@ -191,8 +203,19 @@ fn with_project_extension(path: PathBuf) -> PathBuf {
 }
 
 fn refresh_menu(app: &AppHandle, state: &State<'_, AppState>) {
-    if let Err(error) = crate::menu::apply(app, &state.recent_projects()) {
+    if let Err(error) = crate::menu::apply(app, &state.config()) {
         eprintln!("the menu could not be rebuilt: {error}");
+    }
+}
+
+pub fn apply_window_theme(app: &AppHandle, theme: Theme) {
+    let native = match theme {
+        Theme::System => None,
+        Theme::Light => Some(tauri::Theme::Light),
+        Theme::Dark => Some(tauri::Theme::Dark),
+    };
+    for window in app.webview_windows().values() {
+        let _ = window.set_theme(native);
     }
 }
 

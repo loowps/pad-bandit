@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 use crate::card::{CardState, LoadedCard};
-use crate::config::{Config, ConfigStore};
+use crate::config::{Config, ConfigStore, Theme};
 use crate::error::{Error, Result};
 use crate::paths::{FileGrants, Scopes};
 use crate::projects::{Journal, Project, ProjectStore, StoredProject};
@@ -129,6 +129,12 @@ impl AppState {
         let resolved = inner.scopes.set_card_root(path)?;
         inner.store.set_card_path(resolved)?;
         inner.card = None;
+        Ok(inner.store.config().clone())
+    }
+
+    pub fn set_theme(&self, theme: Theme) -> Result<Config> {
+        let mut inner = self.lock();
+        inner.store.set_theme(theme)?;
         Ok(inner.store.config().clone())
     }
 
@@ -339,6 +345,18 @@ mod tests {
                 .is_err()
         );
         assert_eq!(f.state.config().card_path, None);
+    }
+
+    #[test]
+    fn the_chosen_theme_persists_across_a_restart() {
+        let f = fixture();
+
+        let config = f.state.set_theme(Theme::Dark).expect("set theme");
+        assert_eq!(config.theme, Theme::Dark);
+
+        let restarted =
+            AppState::load(&f.config_dir, f._root.path().join("data").as_path()).expect("restart");
+        assert_eq!(restarted.config().theme, Theme::Dark);
     }
 
     #[test]

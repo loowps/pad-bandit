@@ -39,6 +39,7 @@ function config(folders: BrowseFolder[]): AppConfig {
     browseFolders: folders,
     cardPath: null,
     recentProjects: [],
+    theme: 'system',
     window: { width: 1230, height: 900, x: null, y: null, maximized: false },
   }
 }

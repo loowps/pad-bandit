@@ -407,7 +407,7 @@ function endDrag(event: PointerEvent): void {
 }
 
 .notice.is-error {
-  color: #b4441f;
+  color: var(--status-danger);
 }
 
 .spinner {
