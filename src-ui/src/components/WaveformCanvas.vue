@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { onMounted, useTemplateRef, watch } from 'vue'
 import { useDevicePixelRatio, useElementSize } from '@vueuse/core'
+import { playedSpan } from '@/domain/region'
 
-const props = defineProps<{
-  minMax: number[]
-  progress: number | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    minMax: number[]
+    progress: number | null
+    playedFrom?: number
+  }>(),
+  { playedFrom: 0 },
+)
 
 const canvas = useTemplateRef<HTMLCanvasElement>('canvas')
 const { width, height } = useElementSize(canvas)
@@ -30,8 +35,8 @@ function draw(): void {
   element.height = deviceHeight
 
   const styles = getComputedStyle(element)
-  const waveColor = readColor(styles, '--wave-color')
-  const playedColor = readColor(styles, '--wave-played')
+  const waveColor = readColor(styles, '--wave-fill')
+  const playedColor = readColor(styles, '--wave-fill-played')
   const cursorColor = readColor(styles, '--wave-cursor')
 
   context.clearRect(0, 0, deviceWidth, deviceHeight)
@@ -45,8 +50,7 @@ function draw(): void {
   }
 
   const columnWidth = deviceWidth / total
-  const playedColumns =
-    props.progress === null ? 0 : Math.round(Math.min(1, Math.max(0, props.progress)) * total)
+  const played = playedSpan(props.progress, props.playedFrom, total)
 
   for (let column = 0; column < total; column++) {
     const min = values[column * 2] ?? 0
@@ -54,7 +58,7 @@ function draw(): void {
     const top = middle - max * scale
     const bottom = middle - min * scale
 
-    context.fillStyle = column < playedColumns ? playedColor : waveColor
+    context.fillStyle = column >= played.from && column < played.to ? playedColor : waveColor
     context.fillRect(
       Math.floor(column * columnWidth),
       top,
@@ -63,13 +67,16 @@ function draw(): void {
     )
   }
 
-  if (props.progress !== null && playedColumns > 0) {
+  if (props.progress !== null && played.to > 0) {
     context.fillStyle = cursorColor
-    context.fillRect(Math.min(playedColumns * columnWidth, deviceWidth - 1), 0, 1, deviceHeight)
+    context.fillRect(Math.min(played.to * columnWidth, deviceWidth - 1), 0, 1, deviceHeight)
   }
 }
 
-watch([() => props.minMax, () => props.progress, width, height, pixelRatio], draw)
+watch(
+  [() => props.minMax, () => props.progress, () => props.playedFrom, width, height, pixelRatio],
+  draw,
+)
 onMounted(draw)
 </script>
 

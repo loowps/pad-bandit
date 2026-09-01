@@ -32,7 +32,7 @@ const browser = useFileBrowserStore()
   color: var(--text-muted);
   background: var(--panel-surface);
   border: 1px dashed var(--dropzone-border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
 }
 
 .headline {

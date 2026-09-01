@@ -60,3 +60,21 @@ export function clampPlaybackStart(frame: number | null, region: Region): number
   const latestStart = Math.max(region.start, region.end - 1)
   return Math.min(Math.max(Math.round(frame), region.start), latestStart)
 }
+
+export interface PlayedSpan {
+  from: number
+  to: number
+}
+
+export function playedSpan(
+  progress: number | null,
+  playedFrom: number,
+  columns: number,
+): PlayedSpan {
+  if (progress === null || columns === 0) {
+    return { from: 0, to: 0 }
+  }
+  const asColumn = (fraction: number) => Math.round(Math.min(1, Math.max(0, fraction)) * columns)
+  const from = asColumn(playedFrom)
+  return { from, to: Math.max(from, asColumn(progress)) }
+}

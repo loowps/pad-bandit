@@ -50,6 +50,17 @@ export const useAudioStore = defineStore('audio', () => {
     void stop()
   }
 
+  async function seek(frame: number): Promise<void> {
+    if (!isPlaying.value) {
+      return
+    }
+    try {
+      await playback.seek(frame)
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause)
+    }
+  }
+
   function isSourcePlaying(sourceId: string): boolean {
     return isPlaying.value && source.value === sourceId
   }
@@ -70,11 +81,13 @@ export const useAudioStore = defineStore('audio', () => {
     isPlaying,
     source,
     positionFrame: playback.positionFrame,
+    playingRange: playback.range,
     error,
     start,
     stop,
     play,
     pause,
+    seek,
     toggle,
     isSourcePlaying,
     setVolume,

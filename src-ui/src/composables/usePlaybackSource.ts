@@ -6,6 +6,7 @@ export interface PlaybackSource {
   isActive: ComputedRef<boolean>
   progress: ComputedRef<number | null>
   toggle: () => void
+  moveTo: () => void
 }
 
 export function usePlaybackSource(
@@ -34,5 +35,25 @@ export function usePlaybackSource(
     void audio.start(request, sourceId)
   })
 
-  return { isActive, progress, toggle: () => audio.toggle(sourceId) }
+  function moveTo(): void {
+    if (!isActive.value) {
+      audio.toggle(sourceId)
+      return
+    }
+
+    const next = buildRequest()
+    if (!next) {
+      audio.pause()
+      return
+    }
+
+    const range = audio.playingRange
+    if (range && next.startFrame >= range.start && next.startFrame <= range.end) {
+      void audio.seek(next.startFrame)
+    } else {
+      void audio.start(next, sourceId)
+    }
+  }
+
+  return { isActive, progress, toggle: () => audio.toggle(sourceId), moveTo }
 }

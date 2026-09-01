@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, useTemplateRef, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useDevicePixelRatio, useElementSize } from '@vueuse/core'
 import AudioDropzone from '@/components/AudioDropzone.vue'
 import WaveformCanvas from '@/components/WaveformCanvas.vue'
@@ -17,10 +17,15 @@ import {
   setRegionEnd,
   setRegionStart,
 } from '@/domain/region'
+import { preciseTime } from '@/domain/format'
 
 type DragMode = 'move' | 'start' | 'end' | 'scrub' | 'playhead'
 
+type BadgeSide = 'left' | 'right'
+
 const CLICK_SLOP_PX = 3
+const BADGE_WIDTH_PX = 56
+const BADGE_GAP_PX = 6
 
 const pads = usePadsStore()
 const ui = useUiStore()
@@ -63,6 +68,10 @@ const regionStyle = computed(() => ({
   width: percentOf(region.value.end - region.value.start),
 }))
 
+const leadShadeStyle = computed(() => ({ width: percentOf(region.value.start) }))
+
+const tailShadeStyle = computed(() => ({ left: percentOf(region.value.end) }))
+
 const regionStartStyle = computed(() => ({ left: percentOf(region.value.start) }))
 const regionEndStyle = computed(() => ({ left: percentOf(region.value.end) }))
 
@@ -70,7 +79,35 @@ const playbackStart = computed(() => clampPlaybackStart(ui.playbackStartFrame, r
 
 const playbackStartStyle = computed(() => ({ left: percentOf(playbackStart.value) }))
 
-const { progress, toggle } = usePlaybackSource(PAD_PLAYBACK, buildRequest, totalFrames)
+const playedFrom = computed(() =>
+  totalFrames.value === 0 ? 0 : playbackStart.value / totalFrames.value,
+)
+
+const { isActive, moveTo, progress } = usePlaybackSource(PAD_PLAYBACK, buildRequest, totalFrames)
+
+function timeBadge(frame: number, preferred: BadgeSide) {
+  const fraction = totalFrames.value === 0 ? 0 : frame / totalFrames.value
+  const offset = fraction * viewWidth.value
+  const needed = BADGE_WIDTH_PX + BADGE_GAP_PX
+  const fitsLeft = offset >= needed
+  const fitsRight = offset <= viewWidth.value - needed
+  const side = preferred === 'left' ? (fitsLeft ? 'left' : 'right') : fitsRight ? 'right' : 'left'
+
+  return {
+    time: preciseTime(frame / sampleRate.value),
+    style: { left: fraction * 100 + '%', '--badge-gap': BADGE_GAP_PX + 'px' },
+    side: 'to-' + side,
+  }
+}
+
+const startBadge = computed(() => timeBadge(region.value.start, 'right'))
+const endBadge = computed(() => timeBadge(region.value.end, 'left'))
+const playingBadge = computed(() => timeBadge((progress.value ?? 0) * totalFrames.value, 'right'))
+
+const movesWholeRegion = computed(() => dragMode.value === 'move')
+const showsStartBadge = computed(() => movesWholeRegion.value || dragMode.value === 'start')
+const showsEndBadge = computed(() => movesWholeRegion.value || dragMode.value === 'end')
+const showsPlayingBadge = computed(() => isActive.value && progress.value !== null)
 
 function buildRequest() {
   const pad = selectedPad.value
@@ -101,6 +138,12 @@ watch(isLoading, (loading) => {
 })
 
 watch(peaks, (loaded) => {
+  ui.setAudioInfo(
+    loaded
+      ? { frames: loaded.frames, sampleRate: loaded.sampleRate, channels: loaded.channels }
+      : null,
+  )
+
   if (loaded && loaded.frames > 0) {
     writeRegion(
       fitRegionToBuffer(region.value, {
@@ -124,7 +167,37 @@ watch(
   },
 )
 
-let dragMode: DragMode | null = null
+const dragMode = ref<DragMode | null>(null)
+const isDragOver = ref(false)
+
+const acceptsDrop = computed(() => selectedPad.value !== null && ui.dragPayload?.source === 'audio')
+
+const showsDropTarget = computed(() => isDragOver.value && acceptsDrop.value)
+
+function handleDragOver(): void {
+  if (acceptsDrop.value) {
+    isDragOver.value = true
+  }
+}
+
+function handleDragLeave(event: DragEvent): void {
+  const leaving = event.relatedTarget
+  if (!(leaving instanceof Node) || !root.value?.contains(leaving)) {
+    isDragOver.value = false
+  }
+}
+
+function handleDrop(): void {
+  const payload = ui.dragPayload
+  const pad = selectedPad.value
+  isDragOver.value = false
+
+  if (pad && payload?.source === 'audio') {
+    pads.assignAudio(pad.id, payload.audio)
+  }
+  ui.endDrag()
+}
+
 let dragOriginX = 0
 let dragOriginRegion: Region = { start: 0, end: 0 }
 let dragMoved = false
@@ -144,11 +217,13 @@ function movePlaybackStart(clientX: number): void {
   ui.setPlaybackStart(clampPlaybackStart(frameAt(clientX) + playheadGrabOffset, region.value))
 }
 
+
+
 function beginDrag(mode: DragMode, event: PointerEvent): void {
   if (totalFrames.value === 0) {
     return
   }
-  dragMode = mode
+  dragMode.value = mode
   dragOriginX = event.clientX
   dragOriginRegion = region.value
   dragMoved = false
@@ -161,23 +236,23 @@ function beginDrag(mode: DragMode, event: PointerEvent): void {
 }
 
 function continueDrag(event: PointerEvent): void {
-  if (!dragMode) {
+  if (!dragMode.value) {
     return
   }
   if (Math.abs(event.clientX - dragOriginX) > CLICK_SLOP_PX) {
     dragMoved = true
   }
 
-  if (dragMode === 'scrub' || dragMode === 'playhead') {
+  if (dragMode.value === 'scrub' || dragMode.value === 'playhead') {
     movePlaybackStart(event.clientX)
     return
   }
 
   const delta = (event.clientX - dragOriginX) * framesPerPixel()
 
-  if (dragMode === 'move') {
+  if (dragMode.value === 'move') {
     writeRegion(moveRegion(dragOriginRegion, delta, bounds.value))
-  } else if (dragMode === 'start') {
+  } else if (dragMode.value === 'start') {
     writeRegion(setRegionStart(dragOriginRegion, dragOriginRegion.start + delta, bounds.value))
   } else {
     writeRegion(setRegionEnd(dragOriginRegion, dragOriginRegion.end + delta, bounds.value))
@@ -185,10 +260,16 @@ function continueDrag(event: PointerEvent): void {
 }
 
 function endDrag(event: PointerEvent): void {
-  if (dragMode === 'move' && !dragMoved) {
+  const clicked = dragMode.value === 'move' && !dragMoved
+  if (clicked) {
     movePlaybackStart(event.clientX)
   }
-  dragMode = null
+
+  if (clicked || dragMode.value === 'scrub' || dragMode.value === 'playhead') {
+    moveTo()
+  }
+
+  dragMode.value = null
   const element = event.currentTarget as Element
   if (element.hasPointerCapture(event.pointerId)) {
     element.releasePointerCapture(event.pointerId)
@@ -197,7 +278,14 @@ function endDrag(event: PointerEvent): void {
 </script>
 
 <template>
-  <div ref="root" class="waveform">
+  <div
+    ref="root"
+    class="waveform"
+    :class="{ 'is-drop-target': showsDropTarget }"
+    @dragover.prevent="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop.prevent="handleDrop"
+  >
     <p v-if="!selectedPad" class="notice">Select a pad to edit its sample.</p>
 
     <AudioDropzone v-else-if="!selectedPad.audio" />
@@ -218,7 +306,10 @@ function endDrag(event: PointerEvent): void {
       @pointerup="endDrag"
       @pointercancel="endDrag"
     >
-      <WaveformCanvas :min-max="minMax" :progress="progress" />
+      <WaveformCanvas :min-max="minMax" :progress="progress" :played-from="playedFrom" />
+
+      <span class="shade" :style="leadShadeStyle" />
+      <span class="shade is-tail" :style="tailShadeStyle" />
 
       <div
         class="region"
@@ -227,7 +318,6 @@ function endDrag(event: PointerEvent): void {
         @pointermove.stop="continueDrag"
         @pointerup.stop="endDrag"
         @pointercancel.stop="endDrag"
-        @dblclick.stop="toggle()"
       />
 
       <span
@@ -256,25 +346,53 @@ function endDrag(event: PointerEvent): void {
         @pointerup.stop="endDrag"
         @pointercancel.stop="endDrag"
       />
+
+      <span
+        v-if="showsStartBadge"
+        class="badge"
+        :class="startBadge.side"
+        :style="startBadge.style"
+        >{{ startBadge.time }}</span
+      >
+      <span v-if="showsEndBadge" class="badge" :class="endBadge.side" :style="endBadge.style">{{
+        endBadge.time
+      }}</span>
+      <span
+        v-if="showsPlayingBadge"
+        class="badge is-playing"
+        :class="playingBadge.side"
+        :style="playingBadge.style"
+        >{{ playingBadge.time }}</span
+      >
     </div>
   </div>
 </template>
 
 <style scoped>
 .waveform {
-  --wave-color: #2d6a84;
-  --wave-played: #3f7991;
-  --wave-cursor: #ff6600;
-  --region-fill: rgb(94 160 255 / 16%);
-
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
   overflow: hidden;
-  background: var(--app-surface);
+  background: var(--wave-surface);
   border-bottom: 1px solid var(--panel-border);
+}
+
+.waveform.is-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+
+.waveform.is-drop-target::after {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  content: '';
+  pointer-events: none;
+  background: var(--accent-soft);
+  opacity: 0.55;
 }
 
 .notice {
@@ -320,15 +438,28 @@ function endDrag(event: PointerEvent): void {
   cursor: col-resize;
 }
 
+.shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--wave-shade);
+}
+
+.shade.is-tail {
+  right: 0;
+}
+
 .region {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 1;
+  z-index: 2;
   cursor: grab;
-  background: var(--region-fill);
-  border-right: 1px solid var(--accent);
-  border-left: 1px solid var(--accent);
+  border-right: 1px solid var(--wave-marker);
+  border-left: 1px solid var(--wave-marker);
 }
 
 .region:active {
@@ -339,7 +470,7 @@ function endDrag(event: PointerEvent): void {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 2;
+  z-index: 3;
   width: 12px;
   cursor: col-resize;
   transform: translateX(-6px);
@@ -371,10 +502,36 @@ function endDrag(event: PointerEvent): void {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 3;
+  z-index: 4;
   width: 10px;
   cursor: ew-resize;
   transform: translateX(-5px);
+}
+
+.badge {
+  position: absolute;
+  top: 6px;
+  z-index: 5;
+  padding: 2px 6px;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  background: var(--wave-marker);
+  border-radius: var(--radius-sm);
+}
+
+.badge.to-left {
+  transform: translateX(calc(-100% - var(--badge-gap)));
+}
+
+.badge.to-right {
+  transform: translateX(var(--badge-gap));
+}
+
+.badge.is-playing {
+  background: var(--wave-cursor);
 }
 
 .handle::before {
@@ -384,7 +541,7 @@ function endDrag(event: PointerEvent): void {
   left: 50%;
   width: 3px;
   content: '';
-  background: var(--accent);
+  background: var(--wave-marker);
   transform: translateX(-50%);
 }
 </style>

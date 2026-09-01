@@ -103,15 +103,18 @@ describe('FilePreview', () => {
     expect(browser.previewStartFrame).toBeNull()
   })
 
-  it('shows the playhead only while the preview itself is playing', async () => {
+  it('leaves its position on the picked start while another source plays', async () => {
     const wrapper = await mountWithSelectedFile()
+    const browser = useFileBrowserStore()
     const audio = useAudioStore()
 
-    expect(wrapper.findComponent({ name: 'WaveformCanvas' }).props('progress')).toBeNull()
+    browser.setPreviewStart(22_050)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('.track').attributes('style')).toContain('--fraction: 0.25')
 
     audio.play()
     await flushPromises()
 
-    expect(wrapper.findComponent({ name: 'WaveformCanvas' }).props('progress')).toBeNull()
+    expect(wrapper.get('.track').attributes('style')).toContain('--fraction: 0.25')
   })
 })

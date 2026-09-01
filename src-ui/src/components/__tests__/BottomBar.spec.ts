@@ -43,7 +43,7 @@ describe('BottomBar', () => {
     const wrapper = mount(BottomBar)
     const sync = wrapper.get('.sync')
 
-    expect(sync.text()).toBe('Sync…')
+    expect(sync.text()).toBe('Sync to card')
     expect(sync.attributes('disabled')).toBeDefined()
   })
 

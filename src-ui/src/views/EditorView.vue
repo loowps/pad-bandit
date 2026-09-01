@@ -42,7 +42,6 @@ onUnmounted(() => {
   <div class="editor">
     <RecoveryBanner />
     <ReconciliationBanner />
-    <AppToolbar />
     <main class="editor-body">
       <FileBrowser class="editor-sidebar" :style="{ width: ui.sidebarWidth + 'px' }" />
       <PaneDivider
@@ -54,6 +53,7 @@ onUnmounted(() => {
         @resize="ui.setSidebarWidth"
       />
       <div class="work-area">
+        <AppToolbar />
         <PadWaveform class="editor-waveform" />
         <PadParameters />
         <div class="pad-area">
@@ -82,6 +82,7 @@ onUnmounted(() => {
 
 .editor-sidebar {
   flex: 0 0 auto;
+  border-right: 1px solid var(--panel-border);
 }
 
 .work-area {
@@ -93,7 +94,7 @@ onUnmounted(() => {
 }
 
 .editor-waveform {
-  flex: 0 0 13rem;
+  flex: 0 0 clamp(10rem, 26vh, 18rem);
 }
 
 .pad-area {

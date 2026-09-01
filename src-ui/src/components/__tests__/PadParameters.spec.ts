@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import PadParameters from '@/components/PadParameters.vue'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
+import { diskAudio } from '@/domain/pad'
 
 describe('PadParameters', () => {
   beforeEach(() => {
@@ -48,11 +49,44 @@ describe('PadParameters', () => {
     ui.selectPad('A1')
     await wrapper.vm.$nextTick()
     const volumeValue = () =>
-      (wrapper.findAll('input[type="number"]')[1]?.element as HTMLInputElement | undefined)?.value
+      (wrapper.findAll('input[type="number"]')[0]?.element as HTMLInputElement | undefined)?.value
     expect(volumeValue()).toBe('12')
 
     ui.selectPad('A2')
     await wrapper.vm.$nextTick()
     expect(volumeValue()).toBe('99')
+  })
+
+  it('reverts the selected pad to what the card holds', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.assignAudio('A3', diskAudio('break.wav'))
+    pads.adoptSnapshot()
+    ui.selectPad('A3')
+    const wrapper = mount(PadParameters)
+
+    expect(wrapper.get('.revert-pad').attributes('disabled')).toBeDefined()
+
+    pads.updateSettings('A3', { volume: 40 })
+    await wrapper.vm.$nextTick()
+    await wrapper.get('.revert-pad').trigger('click')
+
+    expect(pads.padById('A3')?.settings.volume).toBe(127)
+    expect(pads.isPrepared('A3')).toBe(false)
+  })
+
+  it('clears the selected pad', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    const wrapper = mount(PadParameters)
+
+    expect(wrapper.get('.clear-pad').attributes('disabled')).toBeDefined()
+
+    pads.assignAudio('A3', diskAudio('break.wav'))
+    ui.selectPad('A3')
+    await wrapper.vm.$nextTick()
+    await wrapper.get('.clear-pad').trigger('click')
+
+    expect(pads.padById('A3')?.audio).toBeNull()
   })
 })

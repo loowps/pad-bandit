@@ -4,16 +4,30 @@ import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
 import { useProjectsStore } from '@/stores/projects'
 import { useSyncStore } from '@/stores/sync'
+import type { PadChangeStatus } from '@/domain/plan'
+
+const WORK_LABELS: Record<PadChangeStatus, string> = {
+  added: 'to copy',
+  replaced: 'to replace',
+  removed: 'to remove',
+  moved: 'to move',
+  settings: 'to retune',
+}
+
+const ORDERED_STATUSES: PadChangeStatus[] = ['added', 'replaced', 'removed', 'moved', 'settings']
 
 const card = useCardStore()
 const pads = usePadsStore()
 const projects = useProjectsStore()
 const sync = useSyncStore()
 
-const pendingLabel = computed(() => {
-  const count = pads.plan.length
-  return count === 1 ? '1 pad changed' : `${count} pads changed`
-})
+const work = computed(() =>
+  ORDERED_STATUSES.map((status) => ({
+    status,
+    label: WORK_LABELS[status],
+    count: pads.plan.filter((change) => change.status === status).length,
+  })).filter((entry) => entry.count > 0),
+)
 
 const portabilityLabel = computed(() => {
   const { fromDisk, fromCard } = projects.portability
@@ -40,16 +54,39 @@ const presenceLabel = computed(() => {
 
 <template>
   <footer class="bottom-bar">
-    <button type="button" class="pick" @click="card.pickCard()">Choose card folder…</button>
-
+    <button v-if="card.status === 'empty'" type="button" class="pick" @click="card.pickCard()">
+      Choose card folder…
+    </button>
     <span v-if="card.status === 'empty'" class="status is-muted">No card folder selected</span>
-    <span v-else-if="card.status === 'reading'" class="status is-muted">Reading card…</span>
+
+    <template v-else-if="card.status === 'reading'">
+      <span class="status is-muted">Reading card…</span>
+    </template>
+
     <template v-else>
-      <span class="path" :title="card.path">{{ card.path }}</span>
+      <button
+        type="button"
+        class="card-chip"
+        aria-label="Change card folder…"
+        :title="card.rootPath ?? ''"
+        @click="card.pickCard()"
+      >
+        <span class="presence" :class="card.presence" aria-hidden="true" />
+        <span class="path">{{ card.path }}</span>
+      </button>
       <span class="status" :class="card.isValid ? 'is-valid' : 'is-invalid'">
         {{ card.isValid ? 'Card folder recognised' : card.error }}
       </span>
+      <button type="button" class="clear" aria-label="Forget card folder" @click="card.clear()">
+        ✕
+      </button>
     </template>
+
+    <ul v-if="work.length > 0" class="plan-summary">
+      <li v-for="entry in work" :key="entry.status" class="work">
+        <b>{{ entry.count }}</b> {{ entry.label }}
+      </li>
+    </ul>
 
     <div class="actions">
       <span v-if="presenceLabel" class="orphans">{{ presenceLabel }}</span>
@@ -58,17 +95,13 @@ const presenceLabel = computed(() => {
       }}</span>
       <span v-else-if="projects.error" class="orphans">{{ projects.error }}</span>
       <span v-else-if="showsPortability" class="portability">{{ portabilityLabel }}</span>
-      <span v-if="pads.hasPreparedPads" class="pending">{{ pendingLabel }}</span>
       <button
         v-if="pads.hasPreparedPads"
         type="button"
-        class="clear"
+        class="discard"
         @click="pads.discardChanges()"
       >
         Discard changes
-      </button>
-      <button v-if="card.status !== 'empty'" type="button" class="clear" @click="card.clear()">
-        Clear
       </button>
       <button
         type="button"
@@ -76,7 +109,7 @@ const presenceLabel = computed(() => {
         :disabled="!pads.hasPreparedPads || card.presence !== 'present'"
         @click="sync.open()"
       >
-        Sync…
+        Sync to card
       </button>
     </div>
   </footer>
@@ -88,41 +121,94 @@ const presenceLabel = computed(() => {
   flex: 0 0 auto;
   gap: 0.75rem;
   align-items: center;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 1rem;
   background: var(--panel-surface);
   border-top: 1px solid var(--panel-border);
 }
 
 .pick,
+.discard,
 .clear,
 .sync {
+  display: inline-flex;
   flex: 0 0 auto;
-  padding: 0.25rem 0.625rem;
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 0.75rem;
   font: inherit;
   font-size: 0.75rem;
+  line-height: 1;
   color: var(--text-default);
   cursor: pointer;
-  background: var(--panel-surface);
+  background: var(--control-surface);
   border: 1px solid var(--control-border);
-  border-radius: 3px;
+  border-radius: var(--radius-md);
 }
 
-.pick:hover:not(:disabled),
-.clear:hover {
-  border-color: var(--accent);
-}
-
-.pick:disabled,
-.sync:disabled {
+.clear {
+  justify-content: center;
+  width: var(--control-height);
+  padding: 0;
   color: var(--text-muted);
-  cursor: default;
-  opacity: 0.6;
+  border: 0;
+}
+
+.pick:hover,
+.discard:hover,
+.clear:hover {
+  border-color: var(--text-subtle);
+}
+
+.clear:hover {
+  color: var(--text-default);
+  background: var(--control-track);
 }
 
 .pick:focus-visible,
-.clear:focus-visible {
+.discard:focus-visible,
+.clear:focus-visible,
+.card-chip:focus-visible,
+.sync:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
+}
+
+.card-chip {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.4375rem;
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 0.5rem;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+}
+
+.card-chip:hover {
+  background: var(--control-track);
+}
+
+.presence {
+  width: 8px;
+  height: 8px;
+  background: var(--text-subtle);
+  border-radius: 50%;
+}
+
+.presence.present {
+  background: var(--status-synced);
+}
+
+.presence.stale {
+  background: var(--status-unsynced);
+}
+
+.presence.missing {
+  background: var(--status-danger);
 }
 
 .path {
@@ -145,23 +231,41 @@ const presenceLabel = computed(() => {
 }
 
 .status.is-valid {
-  color: #1f7a4d;
+  color: var(--status-synced);
 }
 
 .status.is-invalid {
-  color: #b4441f;
+  color: var(--status-danger);
+}
+
+.plan-summary {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.875rem;
+  align-items: center;
+  padding: 0;
+  padding-left: 0.75rem;
+  margin: 0;
+  list-style: none;
+  border-left: 1px solid var(--panel-border);
+}
+
+.work {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.work b {
+  font-variant-numeric: tabular-nums;
+  color: var(--status-unsynced);
 }
 
 .actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
   align-items: center;
   margin-left: auto;
-}
-
-.pending {
-  font-size: 0.75rem;
-  white-space: nowrap;
 }
 
 .portability,
@@ -178,6 +282,27 @@ const presenceLabel = computed(() => {
 }
 
 .orphans {
-  color: #b4441f;
+  color: var(--status-danger);
+}
+
+.sync {
+  padding: 0 1rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+}
+
+.sync:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.sync:disabled {
+  color: var(--text-subtle);
+  cursor: default;
+  background: var(--control-track);
+  border-color: var(--control-border);
 }
 </style>

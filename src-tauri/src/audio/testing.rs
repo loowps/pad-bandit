@@ -15,6 +15,16 @@ pub fn write_tone_wav(
     });
 }
 
+pub fn write_late_tone_wav(path: &Path, sample_rate: u32, frames: u32, channels: u16) {
+    write_wav(path, sample_rate, frames, channels, |frame| {
+        if frame * 2 < frames {
+            return 0.0;
+        }
+        let phase = frame as f32 / sample_rate as f32 * 440.0 * std::f32::consts::TAU;
+        phase.sin() * 0.9
+    });
+}
+
 pub fn write_silence_wav(path: &Path, sample_rate: u32, frames: u32, channels: u16) {
     write_wav(path, sample_rate, frames, channels, |_frame| 0.0);
 }

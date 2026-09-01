@@ -4,51 +4,61 @@ import { PAD_PLAYBACK, useAudioStore } from '@/stores/audio'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { audioSourceName, isPadEmpty } from '@/domain/pad'
+import { channelsLabel, clockTime, folderTrail, sampleRateLabel } from '@/domain/format'
 
 const ui = useUiStore()
 const pads = usePadsStore()
 const audio = useAudioStore()
 
-const padLabel = computed(() => ui.selectedPad?.id ?? '—')
+const title = computed(() => {
+  const pad = ui.selectedPad
+  if (!pad) {
+    return 'No pad selected'
+  }
+  return pad.audio ? audioSourceName(pad.audio) : 'No audio source'
+})
 
-const sourceLabel = computed(() => {
-  const source = ui.selectedPad?.audio
-  return source ? audioSourceName(source) : 'No audio source'
+const details = computed(() => {
+  const pad = ui.selectedPad
+  if (!pad) {
+    return []
+  }
+
+  const parts = [`Pad ${pad.id}`]
+  const trail = pad.audio ? folderTrail(pad.audio.path) : ''
+  if (trail) {
+    parts.push(trail)
+  }
+
+  const info = ui.audioInfo
+  if (pad.audio && info && info.sampleRate > 0) {
+    parts.push(
+      sampleRateLabel(info.sampleRate),
+      channelsLabel(info.channels),
+      clockTime(info.frames / info.sampleRate),
+    )
+  }
+  return parts
 })
 
 const canPlay = computed(() => Boolean(ui.selectedPad?.audio))
 
 const isPadPlaying = computed(() => audio.isSourcePlaying(PAD_PLAYBACK))
 
-const canClear = computed(() => {
+const syncState = computed<'synced' | 'unsynced' | null>(() => {
   const pad = ui.selectedPad
-  return pad ? !isPadEmpty(pad) : false
-})
-
-const canRevert = computed(() => {
-  const pad = ui.selectedPad
-  return pad ? pads.isPrepared(pad.id) : false
-})
-
-function clearSelectedPad(): void {
-  const pad = ui.selectedPad
-  if (pad) {
-    pads.clearPad(pad.id)
+  if (!pad) {
+    return null
   }
-}
-
-function revertSelectedPad(): void {
-  const pad = ui.selectedPad
-  if (pad) {
-    pads.revertPad(pad.id)
+  if (pads.isPrepared(pad.id)) {
+    return 'unsynced'
   }
-}
+  return isPadEmpty(pad) ? null : 'synced'
+})
 </script>
 
 <template>
-  <header class="toolbar">
-    <span class="pad-name">{{ padLabel }}</span>
-
+  <section class="toolbar" aria-label="Selected pad">
     <button
       type="button"
       class="transport"
@@ -62,120 +72,131 @@ function revertSelectedPad(): void {
       </svg>
     </button>
 
-    <span class="source-name" :class="{ empty: !canPlay }">{{ sourceLabel }}</span>
+    <div class="heading">
+      <span class="source-name" :class="{ empty: !canPlay }">{{ title }}</span>
+      <p class="details">
+        <span v-for="(part, index) in details" :key="part" class="detail">
+          <span v-if="index > 0" class="separator" aria-hidden="true">·</span>{{ part }}
+        </span>
+      </p>
+    </div>
 
-    <button
-      type="button"
-      class="revert-pad"
-      :disabled="!canRevert"
-      title="Drop this pad's pending changes and go back to what the card holds"
-      @click="revertSelectedPad"
-    >
-      Revert pad
-    </button>
-
-    <button type="button" class="clear-pad" :disabled="!canClear" @click="clearSelectedPad">
-      Clear pad
-    </button>
-  </header>
+    <span v-if="syncState" class="sync-state" :class="syncState">
+      <span class="dot" aria-hidden="true" />
+      {{ syncState === 'unsynced' ? 'Unsynced' : 'Synced' }}
+    </span>
+  </section>
 </template>
 
 <style scoped>
 .toolbar {
   display: flex;
   flex: 0 0 auto;
-  gap: 0.75rem;
+  gap: 0.875rem;
   align-items: center;
-  padding: 0.5rem 0.75rem;
+  min-height: var(--bar-height);
+  padding: 0.375rem 1rem;
   background: var(--panel-surface);
   border-bottom: 1px solid var(--panel-border);
 }
 
-.pad-name {
-  min-width: 2.5rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
 .transport {
   display: grid;
+  flex: 0 0 auto;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  color: var(--text-default);
+  color: #fff;
   cursor: pointer;
-  background: var(--panel-surface);
-  border: 1px solid var(--control-border);
-  border-radius: 4px;
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-md);
 }
 
 .transport:hover:not(:disabled) {
-  border-color: var(--accent);
+  background: var(--accent-strong);
 }
 
 .transport:disabled {
-  color: var(--text-muted);
+  color: var(--text-subtle);
   cursor: default;
-  opacity: 0.6;
+  background: var(--control-track);
 }
 
 .transport:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   fill: currentcolor;
 }
 
-.revert-pad,
-.clear-pad {
-  flex: 0 0 auto;
-  padding: 0.25rem 0.625rem;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--text-default);
-  cursor: pointer;
-  background: var(--panel-surface);
-  border: 1px solid var(--control-border);
-  border-radius: 3px;
-}
-
-.revert-pad {
-  margin-left: auto;
-}
-
-.revert-pad:hover:not(:disabled),
-.clear-pad:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.revert-pad:disabled,
-.clear-pad:disabled {
-  color: var(--text-muted);
-  cursor: default;
-  opacity: 0.6;
-}
-
-.revert-pad:focus-visible,
-.clear-pad:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+.heading {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-width: 0;
 }
 
 .source-name {
   overflow: hidden;
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .source-name.empty {
   color: var(--text-muted);
-  font-style: italic;
+  font-weight: 500;
+}
+
+.details {
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.separator {
+  margin: 0 0.375rem;
+  color: var(--text-subtle);
+}
+
+.sync-state {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.4375rem;
+  align-items: center;
+  padding: 0.3125rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+}
+
+.sync-state.unsynced {
+  color: var(--status-unsynced);
+  background: var(--status-unsynced-soft);
+}
+
+.sync-state.synced {
+  color: var(--status-synced);
+  background: var(--status-synced-soft);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  background: currentcolor;
+  border-radius: 50%;
 }
 </style>

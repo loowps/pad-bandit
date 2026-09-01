@@ -1,29 +1,29 @@
 <script setup lang="ts">
 import { computed, useTemplateRef } from 'vue'
-import { useDevicePixelRatio, useElementSize } from '@vueuse/core'
-import WaveformCanvas from '@/components/WaveformCanvas.vue'
 import { usePlaybackSource } from '@/composables/usePlaybackSource'
 import { useWaveformPeaks } from '@/composables/useWaveformPeaks'
 import { baseName } from '@/filesystem'
-import { PREVIEW_PLAYBACK } from '@/stores/audio'
+import { PREVIEW_PLAYBACK, useAudioStore } from '@/stores/audio'
 import { useFileBrowserStore } from '@/stores/fileBrowser'
 import { clampPlaybackStart } from '@/domain/region'
+import { clockTime } from '@/domain/format'
+
+const PEAK_COLUMNS = 1
 
 const browser = useFileBrowserStore()
+const audio = useAudioStore()
 
-const body = useTemplateRef<HTMLElement>('body')
-const canvasWrap = useTemplateRef<HTMLElement>('canvasWrap')
-const { width } = useElementSize(body)
-const { pixelRatio } = useDevicePixelRatio()
-const columns = computed(() => Math.floor(width.value * pixelRatio.value))
+const track = useTemplateRef<HTMLElement>('track')
 
 const selectedPath = computed(() => browser.selectedFilePath)
-const { peaks, isLoading, error } = useWaveformPeaks(selectedPath, columns)
+const { peaks, isLoading, error } = useWaveformPeaks(
+  selectedPath,
+  computed(() => PEAK_COLUMNS),
+)
 
 const isReading = computed(() => isLoading.value && !peaks.value)
 
 const name = computed(() => (selectedPath.value ? baseName(selectedPath.value) : ''))
-const minMax = computed(() => peaks.value?.minMax ?? [])
 const totalFrames = computed(() => peaks.value?.frames ?? 0)
 const sampleRate = computed(() => peaks.value?.sampleRate ?? 44100)
 
@@ -31,15 +31,16 @@ const wholeFile = computed(() => ({ start: 0, end: totalFrames.value }))
 
 const startFrame = computed(() => clampPlaybackStart(browser.previewStartFrame, wholeFile.value))
 
-const startStyle = computed(() => ({
-  left: totalFrames.value === 0 ? '0%' : `${(startFrame.value / totalFrames.value) * 100}%`,
-}))
+const { isActive, toggle } = usePlaybackSource(PREVIEW_PLAYBACK, buildRequest, totalFrames)
 
-const { isActive, progress, toggle } = usePlaybackSource(
-  PREVIEW_PLAYBACK,
-  buildRequest,
-  totalFrames,
+const positionFrame = computed(() => (isActive.value ? audio.positionFrame : startFrame.value))
+
+const percent = computed(() =>
+  totalFrames.value === 0 ? 0 : (positionFrame.value / totalFrames.value) * 100,
 )
+
+const elapsed = computed(() => clockTime(positionFrame.value / sampleRate.value))
+const duration = computed(() => clockTime(totalFrames.value / sampleRate.value))
 
 function buildRequest() {
   const path = selectedPath.value
@@ -57,22 +58,10 @@ function buildRequest() {
   }
 }
 
-const duration = computed(() => {
-  const loaded = peaks.value
-  if (!loaded || loaded.sampleRate === 0) {
-    return ''
-  }
-  const seconds = loaded.frames / loaded.sampleRate
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}:${Math.floor(seconds % 60)
-    .toString()
-    .padStart(2, '0')}`
-})
-
 let scrubbing = false
 
 function frameAt(clientX: number): number {
-  const rect = canvasWrap.value?.getBoundingClientRect()
+  const rect = track.value?.getBoundingClientRect()
   if (!rect || rect.width === 0) {
     return 0
   }
@@ -109,119 +98,68 @@ function endScrub(event: PointerEvent): void {
 
 <template>
   <section class="preview">
-    <h3 class="title">Preview</h3>
+    <p v-if="!selectedPath" class="hint">Select a file to preview it.</p>
+    <p v-else-if="isReading" class="hint">Reading…</p>
+    <p v-else-if="error" class="hint is-error">{{ error }}</p>
 
-    <div ref="body" class="body">
-      <p v-if="!selectedPath" class="hint">Select a file to preview it.</p>
-      <p v-else-if="isReading" class="hint">Reading…</p>
-      <p v-else-if="error" class="hint is-error">{{ error }}</p>
-
-      <template v-else>
-        <div
-          ref="canvasWrap"
-          class="canvas-wrap"
-          @pointerdown="beginScrub"
-          @pointermove="continueScrub"
-          @pointerup="endScrub"
-          @pointercancel="endScrub"
+    <template v-else>
+      <div class="controls">
+        <button
+          type="button"
+          class="transport"
+          :aria-label="isActive ? 'Stop preview' : 'Play preview'"
+          @click="toggle()"
         >
-          <WaveformCanvas :min-max="minMax" :progress="progress" />
-          <span
-            class="playback-start"
-            :style="startStyle"
-            :title="`Preview starts at frame ${startFrame}`"
-          />
-        </div>
-        <div class="controls">
-          <button
-            type="button"
-            class="transport"
-            :aria-label="isActive ? 'Stop preview' : 'Play preview'"
-            @click="toggle()"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path v-if="isActive" d="M4 4h8v8H4z" />
-              <path v-else d="M5 3l8 5-8 5z" />
-            </svg>
-          </button>
-          <span class="file-name">{{ name }}</span>
-          <span class="duration">{{ duration }}</span>
-        </div>
-      </template>
-    </div>
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path v-if="isActive" d="M4.5 4.5h7v7h-7z" />
+            <path v-else d="M5 3l8 5-8 5z" />
+          </svg>
+        </button>
+        <span class="file-name" :title="name">{{ name }}</span>
+        <span class="clock">{{ elapsed }} / {{ duration }}</span>
+      </div>
+
+      <div
+        ref="track"
+        class="track"
+        :style="{ '--fraction': percent / 100 }"
+        :title="`Preview starts at frame ${startFrame}`"
+        @pointerdown="beginScrub"
+        @pointermove="continueScrub"
+        @pointerup="endScrub"
+        @pointercancel="endScrub"
+      >
+        <span class="fill" />
+        <span class="knob" />
+      </div>
+    </template>
   </section>
 </template>
 
 <style scoped>
 .preview {
-  --wave-color: #2d6a84;
-  --wave-played: #3f7991;
-  --wave-cursor: #ff6600;
-
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   gap: 0.375rem;
-  padding: 0.5rem;
+  padding: 0.5rem 0.625rem 0.625rem;
   border-top: 1px solid var(--panel-border);
-}
-
-.title {
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
 }
 
 .hint {
   margin: 0;
+  padding: 0.125rem 0.125rem 0.25rem;
   font-size: 0.75rem;
   color: var(--text-muted);
 }
 
 .hint.is-error {
-  color: #b4441f;
-}
-
-.canvas-wrap {
-  position: relative;
-  height: 4rem;
-  cursor: col-resize;
-  background: var(--app-surface);
-}
-
-.playback-start {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  pointer-events: none;
-  background: var(--wave-cursor);
-  transform: translateX(-1px);
-}
-
-.playback-start::before {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  content: '';
-  border-top: 6px solid var(--wave-cursor);
-  border-right: 5px solid transparent;
-  border-left: 5px solid transparent;
-  transform: translateX(-50%);
+  color: var(--status-danger);
 }
 
 .controls {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.375rem;
   align-items: center;
   min-width: 0;
 }
@@ -233,14 +171,15 @@ function endScrub(event: PointerEvent): void {
   width: 22px;
   height: 22px;
   padding: 0;
-  color: var(--text-default);
+  color: var(--text-muted);
   cursor: pointer;
-  background: transparent;
+  background: var(--control-surface);
   border: 1px solid var(--control-border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .transport:hover {
+  color: var(--accent);
   border-color: var(--accent);
 }
 
@@ -250,24 +189,72 @@ function endScrub(event: PointerEvent): void {
 }
 
 .transport svg {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   fill: currentcolor;
 }
 
 .file-name {
   overflow: hidden;
   flex: 1 1 auto;
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  font-size: 0.8125rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.duration {
+.clock {
   flex: 0 0 auto;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
+}
+
+.file-name,
+.clock {
+  position: relative;
+  top: -1px;
+}
+
+.track {
+  --knob-size: 10px;
+
+  position: relative;
+  height: 12px;
+  cursor: pointer;
+}
+
+.track::before {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 3px;
+  content: '';
+  background: var(--control-track);
+  border-radius: 2px;
+  transform: translateY(-50%);
+}
+
+.fill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: calc(var(--knob-size) / 2 + (100% - var(--knob-size)) * var(--fraction));
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  transform: translateY(-50%);
+}
+
+.knob {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--knob-size) / 2 + (100% - var(--knob-size)) * var(--fraction));
+  width: var(--knob-size);
+  height: var(--knob-size);
+  background: var(--panel-surface);
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
 }
 </style>

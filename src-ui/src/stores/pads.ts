@@ -84,6 +84,10 @@ export const usePadsStore = defineStore('pads', () => {
 
   const hasPreparedPads = computed(() => plan.value.length > 0)
 
+  const assignedAudioPaths = computed<Set<string>>(
+    () => new Set(allPads.value.flatMap((pad) => (pad.audio ? [pad.audio.path] : []))),
+  )
+
   function padById(id: PadId): Pad | undefined {
     return byId.value[id]
   }
@@ -94,6 +98,10 @@ export const usePadsStore = defineStore('pads', () => {
 
   function isPrepared(id: PadId): boolean {
     return id in changeById.value
+  }
+
+  function usesAudioPath(path: string): boolean {
+    return assignedAudioPaths.value.has(path)
   }
 
   function updateSettings(id: PadId, changes: Partial<PadSettings>): void {
@@ -212,6 +220,7 @@ export const usePadsStore = defineStore('pads', () => {
     padById,
     changeFor,
     isPrepared,
+    usesAudioPath,
     updateSettings,
     assignAudio,
     clearPad,
