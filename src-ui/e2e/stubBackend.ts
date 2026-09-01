@@ -32,6 +32,7 @@ export type StubMenuAction =
   | { kind: 'saveAs' }
   | { kind: 'forgetRecent' }
   | { kind: 'openRecent'; path: string }
+  | { kind: 'setTheme'; theme: 'system' | 'light' | 'dark' }
 
 declare global {
   interface Window {
@@ -88,6 +89,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         browseFolders: [...given.browseFolders],
         cardPath: given.cardPath,
         recentProjects: [],
+        theme: 'light',
         window: { width: 1230, height: 900, x: null, y: null, maximized: false },
       }
 
@@ -140,6 +142,10 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
         config_set_card_path: ({ path }) => {
           config.cardPath = path
+          return config
+        },
+        config_set_theme: ({ theme }) => {
+          config.theme = theme
           return config
         },
         pick_folder: () => given.pickedFolder,

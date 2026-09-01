@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import type { AppConfig } from '@/config'
+import type { AppConfig, Theme } from '@/config'
 import type { CardPadSettings } from '@/card'
 
 export const PROJECT_VERSION = 1
@@ -60,6 +60,7 @@ export type MenuAction =
   | { kind: 'saveAs' }
   | { kind: 'forgetRecent' }
   | { kind: 'openRecent'; path: string }
+  | { kind: 'setTheme'; theme: Theme }
 
 export function pickProjectToSave(): Promise<string | null> {
   return invoke<string | null>('project_pick_to_save')

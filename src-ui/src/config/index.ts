@@ -14,11 +14,14 @@ export interface WindowState {
   maximized: boolean
 }
 
+export type Theme = 'system' | 'light' | 'dark'
+
 export interface AppConfig {
   version: number
   browseFolders: BrowseFolder[]
   cardPath: string | null
   recentProjects: string[]
+  theme: Theme
   window: WindowState
 }
 
@@ -36,4 +39,8 @@ export function removeBrowseFolder(id: string): Promise<AppConfig> {
 
 export function setCardPath(path: string | null): Promise<AppConfig> {
   return invoke<AppConfig>('config_set_card_path', { path })
+}
+
+export function setTheme(theme: Theme): Promise<AppConfig> {
+  return invoke<AppConfig>('config_set_theme', { theme })
 }

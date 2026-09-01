@@ -1,9 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{
+    CheckMenuItemBuilder, Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder,
+};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+use crate::config::{Config, Theme};
 use crate::state::AppState;
 
 pub const ACTION_EVENT: &str = "menu-action";
@@ -14,6 +17,9 @@ const SAVE: &str = "project.save";
 const SAVE_AS: &str = "project.save-as";
 const FORGET_RECENT: &str = "project.forget-recent";
 const RECENT_PREFIX: &str = "project.recent.";
+const THEME_LIGHT: &str = "view.mode.light";
+const THEME_DARK: &str = "view.mode.dark";
+const THEME_SYSTEM: &str = "view.mode.system";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -25,10 +31,12 @@ pub enum Action {
     ForgetRecent,
     #[serde(rename_all = "camelCase")]
     OpenRecent { path: PathBuf },
+    #[serde(rename_all = "camelCase")]
+    SetTheme { theme: Theme },
 }
 
-pub fn apply<R: Runtime>(app: &AppHandle<R>, recent: &[PathBuf]) -> tauri::Result<()> {
-    let menu = build(app, recent)?;
+pub fn apply<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<()> {
+    let menu = build(app, config)?;
     app.set_menu(menu)?;
     Ok(())
 }
@@ -48,6 +56,13 @@ fn action_of(id: &str, recent: &[PathBuf]) -> Option<Action> {
         SAVE => Some(Action::Save),
         SAVE_AS => Some(Action::SaveAs),
         FORGET_RECENT => Some(Action::ForgetRecent),
+        THEME_LIGHT => Some(Action::SetTheme {
+            theme: Theme::Light,
+        }),
+        THEME_DARK => Some(Action::SetTheme { theme: Theme::Dark }),
+        THEME_SYSTEM => Some(Action::SetTheme {
+            theme: Theme::System,
+        }),
         _ => id
             .strip_prefix(RECENT_PREFIX)
             .and_then(|index| index.parse::<usize>().ok())
@@ -58,7 +73,7 @@ fn action_of(id: &str, recent: &[PathBuf]) -> Option<Action> {
     }
 }
 
-fn build<R: Runtime>(app: &AppHandle<R>, recent: &[PathBuf]) -> tauri::Result<Menu<R>> {
+fn build<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<Menu<R>> {
     let new = MenuItemBuilder::with_id(NEW, "&New")
         .accelerator("CmdOrCtrl+N")
         .build(app)?;
@@ -75,7 +90,7 @@ fn build<R: Runtime>(app: &AppHandle<R>, recent: &[PathBuf]) -> tauri::Result<Me
     let project = SubmenuBuilder::new(app, "&Project")
         .item(&new)
         .item(&open)
-        .item(&recent_submenu(app, recent)?)
+        .item(&recent_submenu(app, &config.recent_projects)?)
         .separator()
         .item(&save)
         .item(&save_as)
@@ -83,7 +98,31 @@ fn build<R: Runtime>(app: &AppHandle<R>, recent: &[PathBuf]) -> tauri::Result<Me
         .quit()
         .build()?;
 
-    MenuBuilder::new(app).item(&project).build()
+    let view = SubmenuBuilder::new(app, "&View")
+        .item(&mode_submenu(app, config.theme)?)
+        .build()?;
+
+    MenuBuilder::new(app).item(&project).item(&view).build()
+}
+
+fn mode_submenu<R: Runtime>(
+    app: &AppHandle<R>,
+    chosen: Theme,
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    let mut submenu = SubmenuBuilder::new(app, "&Mode");
+
+    for (id, label, theme) in [
+        (THEME_LIGHT, "&Light", Theme::Light),
+        (THEME_DARK, "&Dark", Theme::Dark),
+        (THEME_SYSTEM, "&System", Theme::System),
+    ] {
+        let item = CheckMenuItemBuilder::with_id(id, label)
+            .checked(theme == chosen)
+            .build(app)?;
+        submenu = submenu.item(&item);
+    }
+
+    submenu.build()
 }
 
 fn recent_submenu<R: Runtime>(
@@ -143,6 +182,26 @@ mod tests {
         assert_eq!(action_of(SAVE, &[]), Some(Action::Save));
         assert_eq!(action_of(SAVE_AS, &[]), Some(Action::SaveAs));
         assert_eq!(action_of(FORGET_RECENT, &[]), Some(Action::ForgetRecent));
+    }
+
+    #[test]
+    fn each_mode_item_maps_to_the_theme_it_names() {
+        assert_eq!(
+            action_of(THEME_LIGHT, &[]),
+            Some(Action::SetTheme {
+                theme: Theme::Light
+            })
+        );
+        assert_eq!(
+            action_of(THEME_DARK, &[]),
+            Some(Action::SetTheme { theme: Theme::Dark })
+        );
+        assert_eq!(
+            action_of(THEME_SYSTEM, &[]),
+            Some(Action::SetTheme {
+                theme: Theme::System
+            })
+        );
     }
 
     #[test]

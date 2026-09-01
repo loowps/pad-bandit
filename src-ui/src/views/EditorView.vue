@@ -13,6 +13,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useCardStore } from '@/stores/card'
 import { useFileBrowserStore } from '@/stores/fileBrowser'
 import { useProjectsStore } from '@/stores/projects'
+import { useThemeStore } from '@/stores/theme'
 import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
@@ -24,9 +25,10 @@ const ui = useUiStore()
 const browser = useFileBrowserStore()
 const card = useCardStore()
 const projects = useProjectsStore()
+const theme = useThemeStore()
 
 onMounted(async () => {
-  await Promise.all([browser.restore(), card.restore()])
+  await Promise.all([theme.restore(), theme.listenToMenu(), browser.restore(), card.restore()])
   await Promise.all([projects.refresh(), projects.offerRecovery(), projects.listenToMenu()])
   projects.startJournal()
   card.watchPresence()
@@ -34,6 +36,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   projects.stopJournal()
+  theme.stopListeningToMenu()
   card.stopWatching()
 })
 </script>

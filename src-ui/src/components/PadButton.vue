@@ -113,7 +113,7 @@ function handleDrop(): void {
 }
 
 .pad[data-state='synced'] {
-  color: var(--pad-label);
+  color: var(--pad-synced-label);
   background-color: var(--pad-synced-surface);
   border-color: var(--pad-synced-border);
 }
@@ -123,7 +123,7 @@ function handleDrop(): void {
 }
 
 .pad[data-state='unsynced'] {
-  color: var(--pad-label);
+  color: var(--pad-unsynced-label);
   background-color: var(--pad-unsynced-surface);
   border-color: var(--pad-unsynced-border);
 }
@@ -133,14 +133,14 @@ function handleDrop(): void {
 }
 
 .pad[data-state='pending'] {
-  color: var(--pad-label);
+  color: var(--pad-pending-label);
   background-color: var(--pad-pending-surface);
   border-color: var(--pad-unsynced-border);
   border-style: dashed;
 }
 
 .pad.is-selected {
-  color: var(--pad-label);
+  color: var(--pad-selected-label);
   background-color: var(--pad-selected-surface);
   border-color: var(--pad-selected-border);
 }

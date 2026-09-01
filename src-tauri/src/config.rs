@@ -9,6 +9,15 @@ pub const CONFIG_VERSION: u32 = 1;
 const RECENT_PROJECTS_KEPT: usize = 10;
 const CONFIG_FILE_NAME: &str = "config.json";
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Folder {
@@ -46,6 +55,7 @@ pub struct Config {
     pub browse_folders: Vec<Folder>,
     pub card_path: Option<PathBuf>,
     pub recent_projects: Vec<PathBuf>,
+    pub theme: Theme,
     pub window: WindowState,
 }
 
@@ -56,6 +66,7 @@ impl Default for Config {
             browse_folders: Vec::new(),
             card_path: None,
             recent_projects: Vec::new(),
+            theme: Theme::default(),
             window: WindowState::default(),
         }
     }
@@ -107,6 +118,11 @@ impl ConfigStore {
 
     pub fn set_card_path(&mut self, path: Option<PathBuf>) -> Result<()> {
         self.config.card_path = path;
+        self.save()
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) -> Result<()> {
+        self.config.theme = theme;
         self.save()
     }
 
@@ -292,6 +308,17 @@ mod tests {
 
         let reloaded = ConfigStore::load(dir.path()).expect("reload");
         assert_eq!(&reloaded.config().recent_projects, recent);
+    }
+
+    #[test]
+    fn the_theme_defaults_to_the_system_one_and_survives_a_reload() {
+        let (dir, mut store) = store();
+        assert_eq!(store.config().theme, Theme::System);
+
+        store.set_theme(Theme::Dark).expect("set theme");
+
+        let reloaded = ConfigStore::load(dir.path()).expect("reload");
+        assert_eq!(reloaded.config().theme, Theme::Dark);
     }
 
     #[test]

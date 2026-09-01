@@ -13,8 +13,6 @@
   --accent-soft: #eaf1ff;
   --focus-ring: #5ea0ff;
 
-  --pad-label: #1f2329;
-
   --pad-empty-surface: #ced2d8;
   --pad-empty-border: #aab3c0;
   --pad-empty-label: #767b7e;
@@ -22,16 +20,20 @@
   --pad-synced-surface: #fa7d51;
   --pad-synced-surface-hover: #fa875e;
   --pad-synced-border: #f45c20;
+  --pad-synced-label: #1f2329;
 
   --pad-unsynced-surface: #fdded1;
   --pad-unsynced-surface-hover: #fcd0bd;
   --pad-unsynced-border: #f7a984;
+  --pad-unsynced-label: #1f2329;
 
   --pad-pending-surface: #ffffff;
+  --pad-pending-label: #1f2329;
 
   --pad-selected-surface: #b9d5fd;
   --pad-selected-surface-hover: #a9c9fb;
   --pad-selected-border: #2563eb;
+  --pad-selected-label: #1f2329;
 
   --status-synced: #1f7a4d;
   --status-synced-soft: #e6f4ec;
@@ -53,6 +55,9 @@
   --wave-cursor: #ff7c45;
   --wave-shade: rgb(31 45 61 / 20%);
 
+  --scrollbar-thumb: #d5d8de;
+  --scrollbar-thumb-hover: #b0b4bc;
+
   --bar-height: 3.25rem;
   --control-height: 1.75rem;
 
@@ -60,6 +65,67 @@
   --radius-md: 6px;
   --radius-lg: 9px;
   --radius-pill: 999px;
+}
+
+:root[data-theme='dark'] {
+  --app-surface: #15171b;
+  --panel-surface: #1d2025;
+  --panel-border: #2b2f36;
+  --panel-border-strong: #3a3f48;
+
+  --text-default: #e4e7ec;
+  --text-muted: #99a0ab;
+  --text-subtle: #6f7783;
+
+  --accent: #3b7ddd;
+  --accent-strong: #5590e8;
+  --accent-soft: #1b2a42;
+  --focus-ring: #6aa6ff;
+
+  --pad-empty-surface: #262a30;
+  --pad-empty-border: #363b44;
+  --pad-empty-label: #6f7783;
+
+  --pad-synced-surface: #fa7d51;
+  --pad-synced-surface-hover: #fb8b64;
+  --pad-synced-border: #f45c20;
+  --pad-synced-label: #241007;
+
+  --pad-unsynced-surface: #6a3620;
+  --pad-unsynced-surface-hover: #7b4028;
+  --pad-unsynced-border: #a85c33;
+  --pad-unsynced-label: #f5d8c9;
+
+  --pad-pending-surface: #22262c;
+  --pad-pending-label: #e4e7ec;
+
+  --pad-selected-surface: #2f6fd0;
+  --pad-selected-surface-hover: #3a7ddf;
+  --pad-selected-border: #7fb2ff;
+  --pad-selected-label: #f4f8ff;
+
+  --status-synced: #4ec98a;
+  --status-synced-soft: #16301f;
+  --status-unsynced: #f0864f;
+  --status-unsynced-soft: #35200f;
+  --status-danger: #f08a63;
+  --marker-assigned: #ff6b34;
+
+  --control-border: #383d45;
+  --control-surface: #232830;
+  --control-track: #2a2f37;
+  --dropzone-border: #3c4249;
+  --divider-active: rgb(90 146 232 / 35%);
+
+  --wave-surface: #171a1f;
+  --wave-fill: #5d86b4;
+  --wave-fill-played: #78aee0;
+  --wave-marker: #4f92da;
+  --wave-cursor: #ff7c45;
+  --wave-shade: rgb(0 0 0 / 45%);
+
+  --scrollbar-thumb: #3b414a;
+  --scrollbar-thumb-hover: #4c535e;
 }
 
 * {
@@ -92,10 +158,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d5d8de;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #b0b4bc;
+  background: var(--scrollbar-thumb-hover);
 }

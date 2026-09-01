@@ -185,14 +185,14 @@ h2 {
 }
 
 .note.is-bad {
-  color: #b4441f;
+  color: var(--status-danger);
 }
 
 .blockers {
   margin: 0;
   padding-left: 1.125rem;
   font-size: 0.75rem;
-  color: #b4441f;
+  color: var(--status-danger);
 }
 
 .rows {
@@ -239,7 +239,7 @@ label {
 .row-problem {
   margin: 0.125rem 0 0.25rem 5.5rem;
   font-size: 0.6875rem;
-  color: #b4441f;
+  color: var(--status-danger);
 }
 
 footer {

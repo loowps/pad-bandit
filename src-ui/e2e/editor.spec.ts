@@ -188,3 +188,15 @@ test('syncing writes the plan and clears the pending work', async ({ page }) => 
   const call = (await backendCalls(page)).find((each) => each.command === 'sync_apply')
   expect(call).toBeDefined()
 })
+
+test('switching mode from the menu repaints the app and remembers the choice', async ({ page }) => {
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  await chooseFromMenu(page, { kind: 'setTheme', theme: 'dark' })
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  expect(await backendCalls(page)).toContainEqual({
+    command: 'config_set_theme',
+    args: { theme: 'dark' },
+  })
+})

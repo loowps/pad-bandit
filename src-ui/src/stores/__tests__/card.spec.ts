@@ -19,6 +19,7 @@ function config(cardPath: string | null): AppConfig {
     browseFolders: [],
     cardPath,
     recentProjects: [],
+    theme: 'system',
     window: { width: 1230, height: 900, x: null, y: null, maximized: false },
   }
 }

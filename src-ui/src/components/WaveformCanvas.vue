@@ -2,6 +2,7 @@
 import { onMounted, useTemplateRef, watch } from 'vue'
 import { useDevicePixelRatio, useElementSize } from '@vueuse/core'
 import { playedSpan } from '@/domain/region'
+import { useThemeStore } from '@/stores/theme'
 
 const props = withDefaults(
   defineProps<{
@@ -12,6 +13,7 @@ const props = withDefaults(
   { playedFrom: 0 },
 )
 
+const theme = useThemeStore()
 const canvas = useTemplateRef<HTMLCanvasElement>('canvas')
 const { width, height } = useElementSize(canvas)
 const { pixelRatio } = useDevicePixelRatio()
@@ -74,7 +76,15 @@ function draw(): void {
 }
 
 watch(
-  [() => props.minMax, () => props.progress, () => props.playedFrom, width, height, pixelRatio],
+  [
+    () => props.minMax,
+    () => props.progress,
+    () => props.playedFrom,
+    width,
+    height,
+    pixelRatio,
+    () => theme.resolved,
+  ],
   draw,
 )
 onMounted(draw)

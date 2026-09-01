@@ -25,7 +25,9 @@ pub fn run() {
         .setup(|app| {
             let paths = app.path();
             let state = AppState::load(&paths.app_config_dir()?, &paths.app_data_dir()?)?;
-            menu::apply(app.handle(), &state.recent_projects())?;
+            let config = state.config();
+            menu::apply(app.handle(), &config)?;
+            commands::apply_window_theme(app.handle(), config.theme);
             app.manage(state);
             app.manage(Player::spawn(commands::PlaybackBridge::new(
                 app.handle().clone(),
@@ -38,6 +40,7 @@ pub fn run() {
             commands::config_add_folder,
             commands::config_remove_folder,
             commands::config_set_card_path,
+            commands::config_set_theme,
             commands::pick_folder,
             commands::list_dir,
             commands::card_read,
