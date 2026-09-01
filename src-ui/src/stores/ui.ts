@@ -10,10 +10,17 @@ export const SIDEBAR_DEFAULT_WIDTH = 240
 
 export type DragPayload = { source: 'pad'; padId: PadId } | { source: 'audio'; audio: AudioRef }
 
+export interface SelectedAudioInfo {
+  frames: number
+  sampleRate: number
+  channels: number
+}
+
 export const useUiStore = defineStore('ui', () => {
   const selectedPadId = ref<PadId | null>(null)
   const dragPayload = ref<DragPayload | null>(null)
   const isLoadingAudio = ref(false)
+  const audioInfo = ref<SelectedAudioInfo | null>(null)
   const sidebarWidth = ref(SIDEBAR_DEFAULT_WIDTH)
   const playbackStartFrame = ref<number | null>(null)
 
@@ -29,6 +36,10 @@ export const useUiStore = defineStore('ui', () => {
     selectedPadId.value = id
     playbackStartFrame.value = null
     useAudioStore().pause()
+  }
+
+  function setAudioInfo(info: SelectedAudioInfo | null): void {
+    audioInfo.value = info
   }
 
   function setPlaybackStart(frame: number | null): void {
@@ -52,9 +63,11 @@ export const useUiStore = defineStore('ui', () => {
     selectedPad,
     dragPayload,
     isLoadingAudio,
+    audioInfo,
     sidebarWidth,
     playbackStartFrame,
     setSidebarWidth,
+    setAudioInfo,
     setPlaybackStart,
     selectPad,
     startDrag,

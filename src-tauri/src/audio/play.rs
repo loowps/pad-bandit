@@ -16,6 +16,8 @@ use crate::error::{Error, Result};
 const RING_SECONDS: usize = 1;
 const FEED_FRAMES: usize = 4096;
 const POSITION_INTERVAL: Duration = Duration::from_millis(100);
+const CONVERTER_SLACK_FRAMES: u64 = 64;
+const GAIN_RAMP_SECONDS: f32 = 0.005;
 const IDLE_POLL: Duration = Duration::from_millis(20);
 const BUSY_POLL: Duration = Duration::from_millis(2);
 
@@ -130,6 +132,26 @@ struct Active {
     scratch: Vec<f32>,
     staged: Vec<f32>,
     drained: bool,
+    needed_slots: usize,
+    source_per_output: f64,
+}
+
+fn needed_slots(source_rate: u32, device_rate: u32, channels: usize) -> usize {
+    let frames = (FEED_FRAMES as u64 * u64::from(device_rate.max(1)))
+        .div_ceil(u64::from(source_rate.max(1)))
+        + CONVERTER_SLACK_FRAMES;
+    frames as usize * channels
+}
+
+fn interpolated(mark: (u64, u64), consumed: u64, source_per_output: f64, region: Region) -> u64 {
+    let (output_frame, source_frame) = mark;
+    let ahead = ((consumed.saturating_sub(output_frame)) as f64 * source_per_output) as u64;
+
+    if region.reverse {
+        source_frame.saturating_sub(ahead).max(region.start)
+    } else {
+        source_frame.saturating_add(ahead).min(region.end)
+    }
 }
 
 fn run(inbox: Receiver<Command>, events: impl PlaybackEvents) {
@@ -218,6 +240,8 @@ fn apply(command: Command, output: &mut Option<Output>, active: &mut Option<Acti
                 scratch: vec![0.0; FEED_FRAMES * channels],
                 staged: Vec::with_capacity(FEED_FRAMES * channels),
                 drained: false,
+                needed_slots: needed_slots(source_rate, device.sample_rate, device.channels),
+                source_per_output: f64::from(source_rate) / f64::from(device.sample_rate.max(1)),
             });
         }
         Command::Stop => {
@@ -265,7 +289,7 @@ fn reset_output(output: &mut Output) {
 }
 
 fn feed(active: &mut Active, output: &mut Output) -> Result<()> {
-    while output.producer.slots() > output.channels * FEED_FRAMES {
+    while output.producer.slots() >= active.needed_slots {
         if active.drained {
             return Ok(());
         }
@@ -334,7 +358,7 @@ fn source_frame_at(active: &Active, consumed: u64) -> Option<u64> {
         .iter()
         .rev()
         .find(|(output_frame, _)| *output_frame <= consumed)
-        .map(|(_, source_frame)| *source_frame)
+        .map(|mark| interpolated(*mark, consumed, active.source_per_output, active.reader.region()))
 }
 
 fn open_output() -> Result<Output> {
@@ -374,11 +398,12 @@ fn build_stream(
     channels: usize,
 ) -> Result<cpal::Stream> {
     let stream_config: cpal::StreamConfig = config.config();
+    let sample_rate = config.sample_rate();
     let errors = |error| eprintln!("audio output error: {error}");
 
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => {
-            let mut drain = Drain::new(consumer, shared, channels);
+            let mut drain = Drain::new(consumer, shared, channels, sample_rate);
             device.build_output_stream(
                 stream_config,
                 move |output: &mut [f32], _: &cpal::OutputCallbackInfo| drain.fill(output),
@@ -387,7 +412,7 @@ fn build_stream(
             )
         }
         cpal::SampleFormat::I16 => {
-            let mut drain = Drain::new(consumer, shared, channels);
+            let mut drain = Drain::new(consumer, shared, channels, sample_rate);
             device.build_output_stream(
                 stream_config,
                 move |output: &mut [i16], _: &cpal::OutputCallbackInfo| {
@@ -398,7 +423,7 @@ fn build_stream(
             )
         }
         cpal::SampleFormat::U16 => {
-            let mut drain = Drain::new(consumer, shared, channels);
+            let mut drain = Drain::new(consumer, shared, channels, sample_rate);
             device.build_output_stream(
                 stream_config,
                 move |output: &mut [u16], _: &cpal::OutputCallbackInfo| {
@@ -425,15 +450,19 @@ struct Drain {
     shared: Arc<Shared>,
     channels: usize,
     seen_reset: u64,
+    gain: f32,
+    ramp: f32,
 }
 
 impl Drain {
-    fn new(consumer: Consumer<f32>, shared: Arc<Shared>, channels: usize) -> Self {
+    fn new(consumer: Consumer<f32>, shared: Arc<Shared>, channels: usize, sample_rate: u32) -> Self {
         Self {
             consumer,
             shared,
             channels,
             seen_reset: 0,
+            gain: 0.0,
+            ramp: 1.0 / (GAIN_RAMP_SECONDS * sample_rate.max(1) as f32),
         }
     }
 
@@ -446,17 +475,21 @@ impl Drain {
         if wanted != self.seen_reset {
             while self.consumer.pop().is_ok() {}
             self.seen_reset = wanted;
+            self.gain = 0.0;
             self.shared.reset_done.store(wanted, Ordering::Release);
         }
 
-        let gain = f32::from_bits(self.shared.gain_bits.load(Ordering::Relaxed));
+        let target = f32::from_bits(self.shared.gain_bits.load(Ordering::Relaxed));
         let silence = convert(0.0);
         let mut written = 0;
 
         while written < output.len() {
             match self.consumer.pop() {
                 Ok(sample) => {
-                    output[written] = convert(sample * gain);
+                    if written % self.channels == 0 {
+                        self.gain += (target - self.gain).clamp(-self.ramp, self.ramp);
+                    }
+                    output[written] = convert(sample * self.gain);
                     written += 1;
                 }
                 Err(_) => break,
@@ -475,6 +508,85 @@ impl Drain {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn region_of(start: u64, end: u64, reverse: bool) -> Region {
+        Region {
+            start,
+            end,
+            looping: false,
+            reverse,
+        }
+    }
+
+    #[test]
+    fn the_feed_reserves_room_for_whatever_the_rate_conversion_produces() {
+        let channels = 2;
+        let upsampled = (FEED_FRAMES as u64 * 96_000).div_ceil(44_100) as usize;
+
+        assert!(needed_slots(44_100, 96_000, channels) >= upsampled * channels);
+        assert!(needed_slots(44_100, 48_000, channels) > FEED_FRAMES * channels);
+        assert!(needed_slots(44_100, 44_100, channels) >= FEED_FRAMES * channels);
+    }
+
+    #[test]
+    fn a_reported_position_moves_on_inside_the_block_it_lands_in() {
+        let region = region_of(0, 100_000, false);
+
+        assert_eq!(interpolated((1000, 5000), 1000, 1.0, region), 5000);
+        assert_eq!(interpolated((1000, 5000), 1500, 1.0, region), 5500);
+        assert_eq!(interpolated((1000, 5000), 1500, 0.5, region), 5250);
+    }
+
+    #[test]
+    fn a_reported_position_walks_backwards_while_the_region_is_reversed() {
+        let region = region_of(0, 100_000, true);
+
+        assert_eq!(interpolated((1000, 5000), 1500, 1.0, region), 4500);
+    }
+
+    #[test]
+    fn a_reported_position_never_leaves_the_region() {
+        assert_eq!(
+            interpolated((0, 9000), 100_000, 1.0, region_of(1000, 9500, false)),
+            9500
+        );
+        assert_eq!(
+            interpolated((0, 1200), 100_000, 1.0, region_of(1000, 9500, true)),
+            1000
+        );
+    }
+
+    #[test]
+    fn the_output_fades_in_instead_of_opening_at_full_gain() {
+        let (mut producer, consumer) = RingBuffer::<f32>::new(64);
+        for _ in 0..64 {
+            producer.push(1.0).expect("push");
+        }
+        let mut drain = Drain::new(consumer, Arc::new(Shared::new()), 1, 48_000);
+
+        let mut output = [0.0f32; 64];
+        drain.fill(&mut output);
+
+        assert!(output[0] < 0.05, "opened at {} rather than fading in", output[0]);
+        for pair in output.windows(2) {
+            assert!(pair[1] >= pair[0], "the fade is not monotonic");
+        }
+        assert!(output[63] > output[0]);
+    }
+
+    #[test]
+    fn the_ramp_settles_exactly_on_the_wanted_gain() {
+        let (mut producer, consumer) = RingBuffer::<f32>::new(4096);
+        for _ in 0..4096 {
+            producer.push(1.0).expect("push");
+        }
+        let mut drain = Drain::new(consumer, Arc::new(Shared::new()), 1, 48_000);
+
+        let mut output = [0.0f32; 4096];
+        drain.fill(&mut output);
+
+        assert_eq!(output[4095], 1.0);
+    }
 
     #[test]
     fn a_mono_source_is_copied_to_every_device_channel() {

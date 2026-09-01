@@ -11,7 +11,9 @@ const browser = useFileBrowserStore()
     <header class="header">
       <h2 class="title">Audio Folders</h2>
       <button type="button" class="add" aria-label="Add audio folder" @click="browser.addRoot()">
-        +
+        <svg viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+          <path d="M7 2.6v8.8M2.6 7h8.8" />
+        </svg>
       </button>
     </header>
 
@@ -39,7 +41,7 @@ const browser = useFileBrowserStore()
   flex: 0 0 auto;
   gap: 0.5rem;
   align-items: center;
-  padding: 0.5rem 0.5rem 0.5rem 0.625rem;
+  padding: 0.75rem 0.625rem 0.75rem 0.875rem;
   border-bottom: 1px solid var(--panel-border);
 }
 
@@ -49,7 +51,7 @@ const browser = useFileBrowserStore()
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -57,22 +59,28 @@ const browser = useFileBrowserStore()
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  font: inherit;
-  font-size: 0.875rem;
-  line-height: 1;
   color: var(--text-muted);
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--control-border);
-  border-radius: 3px;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.add svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
 .add:hover:not(:disabled) {
   color: var(--text-default);
-  border-color: var(--accent);
+  background: var(--control-track);
 }
 
 .add:disabled {
@@ -94,6 +102,6 @@ const browser = useFileBrowserStore()
 }
 
 .message.is-error {
-  color: #b4441f;
+  color: var(--status-danger);
 }
 </style>

@@ -15,21 +15,61 @@ describe('AppToolbar', () => {
   it('shows a placeholder while nothing is selected', () => {
     const wrapper = mount(AppToolbar)
 
-    expect(wrapper.get('.pad-name').text()).toBe('—')
+    expect(wrapper.get('.source-name').text()).toBe('No pad selected')
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.sync-state').exists()).toBe(false)
   })
 
-  it('names the audio source of the selected pad', async () => {
+  it('names the audio source of the selected pad and where it sits', async () => {
     const pads = usePadsStore()
     const ui = useUiStore()
-    pads.assignAudio('A3', diskAudio(String.raw`D:\samples\break.wav`))
+    pads.assignAudio('A3', diskAudio(String.raw`D:\samples\breaks\break.wav`))
     ui.selectPad('A3')
     const wrapper = mount(AppToolbar)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('.pad-name').text()).toBe('A3')
     expect(wrapper.get('.source-name').text()).toBe('break.wav')
+    expect(wrapper.get('.details').text()).toContain('Pad A3')
+    expect(wrapper.get('.details').text()).toContain('samples / breaks')
     expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
+  })
+
+  it('spells out the sample format once the audio has been read', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.assignAudio('A3', diskAudio('/samples/break.wav'))
+    ui.selectPad('A3')
+    ui.setAudioInfo({ frames: 88_200, sampleRate: 44_100, channels: 2 })
+    const wrapper = mount(AppToolbar)
+    await wrapper.vm.$nextTick()
+
+    const details = wrapper.get('.details').text()
+    expect(details).toContain('44.1 kHz')
+    expect(details).toContain('stereo')
+    expect(details).toContain('0:02')
+  })
+
+  it('keeps calling a cleared pad unsynced until the card catches up', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.assignAudio('A3', diskAudio('break.wav'))
+    pads.adoptSnapshot()
+    ui.selectPad('A3')
+    const wrapper = mount(AppToolbar)
+
+    pads.clearPad('A3')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.sync-state').text()).toBe('Unsynced')
+  })
+
+  it('says nothing about a pad that was empty on the card too', async () => {
+    const ui = useUiStore()
+    ui.selectPad('A4')
+    const wrapper = mount(AppToolbar)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.sync-state').exists()).toBe(false)
   })
 
   it('toggles playback for a pad that has audio', async () => {
@@ -47,21 +87,20 @@ describe('AppToolbar', () => {
     expect(audio.isPlaying).toBe(false)
   })
 
-  it('reverts the selected pad to what the card holds', async () => {
+  it('says whether the selected pad still matches the card', async () => {
     const pads = usePadsStore()
     const ui = useUiStore()
     pads.assignAudio('A3', diskAudio('break.wav'))
     pads.adoptSnapshot()
     ui.selectPad('A3')
     const wrapper = mount(AppToolbar)
+    await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('.revert-pad').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.sync-state').text()).toBe('Synced')
 
     pads.updateSettings('A3', { volume: 40 })
     await wrapper.vm.$nextTick()
-    await wrapper.get('.revert-pad').trigger('click')
 
-    expect(pads.padById('A3')?.settings.volume).toBe(127)
-    expect(pads.isPrepared('A3')).toBe(false)
+    expect(wrapper.get('.sync-state').text()).toBe('Unsynced')
   })
 })

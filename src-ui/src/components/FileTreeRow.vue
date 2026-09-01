@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useFileBrowserStore, type VisibleRow } from '@/stores/fileBrowser'
+import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { diskAudio } from '@/domain/pad'
 
 const props = defineProps<{ row: VisibleRow }>()
 
 const browser = useFileBrowserStore()
+const pads = usePadsStore()
 const ui = useUiStore()
 
 const node = computed(() => props.row.node)
 const isExpanded = computed(() => browser.isExpanded(node.value.path))
 const isLoading = computed(() => browser.isLoading(node.value.path))
 const isSelected = computed(() => browser.selectedFilePath === node.value.path)
+const isAssigned = computed(() => !node.value.isDirectory && pads.usesAudioPath(node.value.path))
 const indent = computed(() => `${0.375 + props.row.depth * 0.75}rem`)
 
 function activate(): void {
@@ -36,11 +39,11 @@ function removeRoot(): void {
 </script>
 
 <template>
-  <div class="row-wrap">
+  <div class="row-wrap" :class="{ 'is-selected': isSelected }">
     <button
       type="button"
       class="row"
-      :class="{ 'is-selected': isSelected, 'is-directory': node.isDirectory }"
+      :class="{ 'is-directory': node.isDirectory, 'is-root': Boolean(row.rootId) }"
       :style="{ paddingLeft: indent }"
       :draggable="!node.isDirectory"
       :aria-expanded="node.isDirectory ? isExpanded : undefined"
@@ -49,8 +52,20 @@ function removeRoot(): void {
       @dragstart="handleDragStart"
       @dragend="ui.endDrag()"
     >
-      <span v-if="node.isDirectory" class="twisty" :class="{ 'is-open': isExpanded }">▸</span>
-      <span v-else class="twisty" />
+      <svg class="glyph" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+        <template v-if="node.isDirectory">
+          <path
+            v-if="isExpanded"
+            d="M1 3.6a.7.7 0 0 1 .7-.7h3.2l1.3 1.4h4.9a.7.7 0 0 1 .7.7v.7H4.6a.7.7 0 0 0-.66.46L2.3 11H1.7a.7.7 0 0 1-.7-.7zM3.6 11l1.5-4.1a.7.7 0 0 1 .66-.46h6.6a.5.5 0 0 1 .47.67l-1.4 3.9a.7.7 0 0 1-.66.46z"
+          />
+          <path
+            v-else
+            d="M1 3.6a.7.7 0 0 1 .7-.7h3.2l1.3 1.4h5.1a.7.7 0 0 1 .7.7v5.3a.7.7 0 0 1-.7.7H1.7a.7.7 0 0 1-.7-.7z"
+          />
+        </template>
+        <circle v-else-if="isAssigned" class="is-assigned" cx="7" cy="7" r="3" />
+        <path v-else d="M5.9 2.6 11 1.4v1.5L7.2 3.8v5.8A2.2 2.2 0 1 1 5.9 7.6z" />
+      </svg>
       <span class="name">{{ node.name }}</span>
       <span v-if="isLoading" class="loading">…</span>
     </button>
@@ -62,7 +77,9 @@ function removeRoot(): void {
       :aria-label="`Remove ${node.name}`"
       @click="removeRoot"
     >
-      ×
+      <svg viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+        <path d="M4 4l6 6M10 4l-6 6" />
+      </svg>
     </button>
   </div>
 </template>
@@ -72,53 +89,60 @@ function removeRoot(): void {
   display: flex;
   align-items: center;
   height: 24px;
+  padding-right: 0.125rem;
+  border-radius: var(--radius-sm);
+}
+
+.row-wrap:hover {
+  background: var(--control-track);
+}
+
+.row-wrap.is-selected {
+  color: #fff;
+  background: var(--accent);
 }
 
 .row {
   display: flex;
   flex: 1 1 auto;
-  gap: 0.25rem;
+  gap: 0.375rem;
   align-items: center;
   min-width: 0;
   height: 100%;
   padding: 0 0.375rem;
   font: inherit;
   font-size: 0.8125rem;
-  color: var(--text-default);
+  color: inherit;
   text-align: left;
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 3px;
-}
-
-.row:hover {
-  background: var(--control-track);
 }
 
 .row:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
+  border-radius: var(--radius-sm);
 }
 
-.row.is-selected {
-  color: #fff;
-  background: var(--accent);
+.row.is-root .name {
+  font-weight: 600;
 }
 
-.twisty {
-  flex: 0 0 0.75rem;
-  font-size: 0.625rem;
-  color: var(--text-muted);
-  transition: transform 120ms ease;
+.glyph {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  fill: var(--text-subtle);
 }
 
-.twisty.is-open {
-  transform: rotate(90deg);
+.glyph .is-assigned {
+  fill: var(--marker-assigned);
 }
 
-.row.is-selected .twisty {
-  color: inherit;
+.row-wrap.is-selected .glyph,
+.row-wrap.is-selected .glyph .is-assigned {
+  fill: currentcolor;
 }
 
 .name {
@@ -139,24 +163,43 @@ function removeRoot(): void {
   width: 18px;
   height: 18px;
   padding: 0;
-  margin-right: 0.25rem;
-  font: inherit;
-  font-size: 0.8125rem;
-  line-height: 1;
   color: var(--text-muted);
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--control-border);
-  border-radius: 3px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+}
+
+.row-wrap:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
 }
 
 .remove:hover {
   color: var(--text-default);
-  border-color: var(--accent);
+  background: var(--panel-surface);
+}
+
+.row-wrap.is-selected .remove {
+  color: #fff;
+}
+
+.row-wrap.is-selected .remove:hover {
+  background: rgb(255 255 255 / 22%);
 }
 
 .remove:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  outline-offset: -2px;
+}
+
+.remove svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 </style>

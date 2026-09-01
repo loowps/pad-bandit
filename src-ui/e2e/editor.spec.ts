@@ -32,7 +32,7 @@ test('renders every bank and pad', async ({ page }) => {
 })
 
 test('starts with no pad selected and nothing to play', async ({ page }) => {
-  await expect(page.getByRole('banner')).toContainText('—')
+  await expect(page.getByRole('region', { name: 'Selected pad' })).toContainText('No pad selected')
   await expect(page.getByRole('button', { name: 'Play' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Clear pad' })).toBeDisabled()
 })
@@ -40,7 +40,7 @@ test('starts with no pad selected and nothing to play', async ({ page }) => {
 test('selecting a pad names it in the toolbar', async ({ page }) => {
   await page.getByRole('button', { name: 'Pad C4', exact: true }).click()
 
-  const toolbar = page.getByRole('banner')
+  const toolbar = page.getByRole('region', { name: 'Selected pad' })
   await expect(toolbar).toContainText('C4')
   await expect(toolbar).toContainText('No audio source')
 })
@@ -83,7 +83,7 @@ test('stores a chosen card folder and fills its pads', async ({ page }) => {
   expect(call?.args).toEqual({ path: '/samples' })
 
   await page.getByRole('button', { name: 'Pad A1', exact: true }).click()
-  await expect(page.getByRole('banner')).toContainText('sample0.wav')
+  await expect(page.getByRole('region', { name: 'Selected pad' })).toContainText('sample0.wav')
 })
 
 test('reports a folder that holds no pad data', async ({ page }) => {
@@ -101,17 +101,17 @@ test('saves the pending work as a project and reopens it', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Pad A1', exact: true }).click()
   await page.getByRole('button', { name: 'Clear pad' }).click()
-  await expect(page.getByText('1 pad changed')).toBeVisible()
+  await expect(page.getByText('1 to remove')).toBeVisible()
 
   await chooseFromMenu(page, { kind: 'saveAs' })
   await expect(page.getByText('0 from disc (portable)')).toBeVisible()
 
   await page.getByRole('button', { name: 'Discard changes' }).click()
-  await expect(page.getByText('1 pad changed')).toBeHidden()
+  await expect(page.getByText('1 to remove')).toBeHidden()
 
   await chooseFromMenu(page, { kind: 'openRecent', path: STUB_PROJECT_PATH })
 
-  await expect(page.getByText('1 pad changed')).toBeVisible()
+  await expect(page.getByText('1 to remove')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Pad A1, sample removed' })).toBeVisible()
 })
 
@@ -121,11 +121,11 @@ test('starting a new project from the menu drops the pending work', async ({ pag
 
   await page.getByRole('button', { name: 'Pad A1', exact: true }).click()
   await page.getByRole('button', { name: 'Clear pad' }).click()
-  await expect(page.getByText('1 pad changed')).toBeVisible()
+  await expect(page.getByText('1 to remove')).toBeVisible()
 
   await chooseFromMenu(page, { kind: 'new' })
 
-  await expect(page.getByText('1 pad changed')).toBeHidden()
+  await expect(page.getByText('1 to remove')).toBeHidden()
   await expect(page.getByRole('button', { name: 'Pad A1, sample removed' })).toBeHidden()
 })
 
@@ -136,13 +136,13 @@ test('shows what changed on a pad and discards it again', async ({ page }) => {
   await page.getByRole('button', { name: 'Pad A1', exact: true }).click()
   await page.getByRole('button', { name: 'Clear pad' }).click()
 
-  await expect(page.getByText('1 pad changed')).toBeVisible()
+  await expect(page.getByText('1 to remove')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Pad A1, sample removed' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Discard changes' }).click()
 
-  await expect(page.getByText('1 pad changed')).toBeHidden()
-  await expect(page.getByRole('banner')).toContainText('sample0.wav')
+  await expect(page.getByText('1 to remove')).toBeHidden()
+  await expect(page.getByRole('region', { name: 'Selected pad' })).toContainText('sample0.wav')
 })
 
 test('the sync preview lists the pending changes and lets rows be deselected', async ({ page }) => {
@@ -151,9 +151,9 @@ test('the sync preview lists the pending changes and lets rows be deselected', a
 
   await page.getByRole('button', { name: 'Pad A1', exact: true }).click()
   await page.getByRole('button', { name: 'Clear pad' }).click()
-  await expect(page.getByText('1 pad changed')).toBeVisible()
+  await expect(page.getByText('1 to remove')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Sync…' }).click()
+  await page.getByRole('button', { name: 'Sync to card' }).click()
 
   const preview = page.getByRole('dialog', { name: 'Sync preview' })
   await expect(preview).toBeVisible()
@@ -176,14 +176,14 @@ test('syncing writes the plan and clears the pending work', async ({ page }) => 
 
   await page.getByRole('button', { name: 'Pad A1', exact: true }).click()
   await page.getByRole('button', { name: 'Clear pad' }).click()
-  await expect(page.getByText('1 pad changed')).toBeVisible()
+  await expect(page.getByText('1 to remove')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Sync…' }).click()
+  await page.getByRole('button', { name: 'Sync to card' }).click()
   const preview = page.getByRole('dialog', { name: 'Sync preview' })
   await preview.getByRole('button', { name: 'Sync', exact: true }).click()
 
   await expect(preview.getByText('1 pad written')).toBeVisible()
-  await expect(page.getByText('1 pad changed')).toBeHidden()
+  await expect(page.getByText('1 to remove')).toBeHidden()
 
   const call = (await backendCalls(page)).find((each) => each.command === 'sync_apply')
   expect(call).toBeDefined()

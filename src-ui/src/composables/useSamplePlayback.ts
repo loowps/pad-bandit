@@ -1,15 +1,18 @@
-import { onScopeDispose, ref, shallowRef } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef } from 'vue'
 import { useRafFn } from '@vueuse/core'
 import {
   onPlaybackEnded,
   onPlaybackError,
   onPlaybackPosition,
   playAudio,
+  seekAudio,
   setAudioGain,
   stopAudio,
 } from '@/audio'
 
 const GAIN_DEBOUNCE_MS = 60
+const SNAP_SECONDS = 0.05
+const CORRECTION_PULL = 0.25
 
 export interface PlaybackRequest {
   path: string
@@ -24,6 +27,10 @@ export interface PlaybackRequest {
 export function useSamplePlayback(onFinished: () => void, onError: (message: string) => void) {
   const positionFrame = ref(0)
   const request = shallowRef<PlaybackRequest | null>(null)
+
+  const range = computed(() =>
+    request.value ? { start: request.value.startFrame, end: request.value.endFrame } : null,
+  )
 
   let anchorFrame = 0
   let anchorAt = 0
@@ -60,8 +67,29 @@ export function useSamplePlayback(onFinished: () => void, onError: (message: str
     positionFrame.value = frame
   }
 
+  function predicted(active: PlaybackRequest): number {
+    const elapsed = (performance.now() - anchorAt) / 1000
+    const travelled = elapsed * active.sampleRate * (active.reverse ? -1 : 1)
+    return clampToRegion(anchorFrame + travelled, active)
+  }
+
+  function reconcile(frame: number): void {
+    const active = request.value
+    if (!active) {
+      anchor(frame)
+      return
+    }
+
+    const drift = frame - predicted(active)
+    if (Math.abs(drift) > active.sampleRate * SNAP_SECONDS) {
+      anchor(frame)
+      return
+    }
+    anchorFrame += drift * CORRECTION_PULL
+  }
+
   const listeners = Promise.all([
-    onPlaybackPosition(anchor),
+    onPlaybackPosition(reconcile),
     onPlaybackEnded(() => {
       tracker.pause()
       const active = request.value
@@ -91,6 +119,16 @@ export function useSamplePlayback(onFinished: () => void, onError: (message: str
     })
   }
 
+  async function seek(frame: number): Promise<void> {
+    const active = request.value
+    if (!active) {
+      return
+    }
+    const wanted = clampToRegion(frame, active)
+    anchor(wanted)
+    await seekAudio(Math.round(wanted))
+  }
+
   async function stop(): Promise<void> {
     tracker.pause()
     request.value = null
@@ -115,5 +153,5 @@ export function useSamplePlayback(onFinished: () => void, onError: (message: str
     void listeners.then((stops) => stops.forEach((unlisten) => unlisten()))
   })
 
-  return { positionFrame, play, stop, setVolume }
+  return { positionFrame, range, play, seek, stop, setVolume }
 }

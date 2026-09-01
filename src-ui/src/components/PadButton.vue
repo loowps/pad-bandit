@@ -22,6 +22,13 @@ const isSelected = computed(() => ui.selectedPadId === props.pad.id)
 const hasAudio = computed(() => props.pad.audio !== null)
 const change = computed(() => pads.changeFor(props.pad.id))
 
+const state = computed(() => {
+  if (hasAudio.value) {
+    return change.value ? 'unsynced' : 'synced'
+  }
+  return change.value ? 'pending' : 'empty'
+})
+
 const padLabel = computed(() => {
   const status = change.value?.status
   return status ? `Pad ${props.pad.id}, ${CHANGE_LABELS[status]}` : `Pad ${props.pad.id}`
@@ -56,7 +63,8 @@ function handleDrop(): void {
   <button
     type="button"
     class="pad"
-    :class="{ 'is-selected': isSelected, 'has-audio': hasAudio, 'is-prepared': change !== null }"
+    :class="{ 'is-selected': isSelected }"
+    :data-state="state"
     :data-change="change?.status"
     :aria-label="padLabel"
     :title="padLabel"
@@ -82,32 +90,18 @@ function handleDrop(): void {
   aspect-ratio: 23 / 20;
   padding: 0;
   font: inherit;
-  font-weight: 700;
-  color: var(--pad-label);
-  background-color: var(--pad-surface);
-  border: 1px solid var(--pad-border);
-  border-radius: 3px;
+  font-weight: 600;
+  color: var(--pad-empty-label);
+  background-color: var(--pad-empty-surface);
+  border: 1px solid var(--pad-empty-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
   cursor: pointer;
   user-select: none;
   transition:
     background-color 120ms ease,
-    border-color 120ms ease;
-}
-
-.pad.is-prepared::after {
-  position: absolute;
-  right: 22%;
-  bottom: 3px;
-  left: 22%;
-  height: 2px;
-  content: '';
-  background: var(--pad-prepared);
-  border-radius: 1px;
-}
-
-.pad[data-change='removed']::after {
-  background: var(--pad-removed);
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .pad-number {
@@ -115,27 +109,48 @@ function handleDrop(): void {
 }
 
 .pad:hover {
-  background-color: var(--pad-surface-hover);
+  border-color: var(--text-subtle);
+}
+
+.pad[data-state='synced'] {
+  color: var(--pad-label);
+  background-color: var(--pad-synced-surface);
+  border-color: var(--pad-synced-border);
+}
+
+.pad[data-state='synced']:hover {
+  background-color: var(--pad-synced-surface-hover);
+}
+
+.pad[data-state='unsynced'] {
+  color: var(--pad-label);
+  background-color: var(--pad-unsynced-surface);
+  border-color: var(--pad-unsynced-border);
+}
+
+.pad[data-state='unsynced']:hover {
+  background-color: var(--pad-unsynced-surface-hover);
+}
+
+.pad[data-state='pending'] {
+  color: var(--pad-label);
+  background-color: var(--pad-pending-surface);
+  border-color: var(--pad-unsynced-border);
+  border-style: dashed;
+}
+
+.pad.is-selected {
+  color: var(--pad-label);
+  background-color: var(--pad-selected-surface);
+  border-color: var(--pad-selected-border);
+}
+
+.pad.is-selected:hover {
+  background-color: var(--pad-selected-surface-hover);
 }
 
 .pad:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
-
-.pad.has-audio {
-  color: var(--pad-label-strong);
-  background-color: var(--pad-surface-loaded);
-  border-color: var(--pad-border-loaded);
-}
-
-.pad.has-audio:hover {
-  background-color: var(--pad-surface-loaded-hover);
-}
-
-.pad.is-selected {
-  color: var(--pad-label-strong);
-  background-color: var(--pad-surface-selected);
-  border-color: var(--pad-border-selected);
+  outline-offset: 2px;
 }
 </style>

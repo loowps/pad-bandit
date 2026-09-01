@@ -200,6 +200,54 @@ async function drag(target: { element: Element }, fromX: number, toX: number): P
 }
 
 describe('PadWaveform playhead dragging', () => {
+  it('starts playback from wherever the marker was put down', async () => {
+    const wrapper = await mountWithSelectedPad()
+    stubSurface(wrapper)
+
+    await drag(wrapper.get('.playhead'), 10, 30)
+
+    const play = invokeMock.mock.calls.find(([command]) => command === 'audio_play')
+    expect(play?.[1]).toMatchObject({ request: { startFrame: 22_050, endFrame: 44_100 } })
+    expect(useAudioStore().isPlaying).toBe(true)
+  })
+
+  it('seeks rather than restarting when it is already playing', async () => {
+    const wrapper = await mountWithSelectedPad()
+    stubSurface(wrapper)
+    useAudioStore().toggle()
+    await flushPromises()
+
+    await drag(wrapper.get('.playhead'), 10, 30)
+
+    const plays = invokeMock.mock.calls.filter(([command]) => command === 'audio_play')
+    const seek = invokeMock.mock.calls.find(([command]) => command === 'audio_seek')
+    expect(plays).toHaveLength(1)
+    expect(seek?.[1]).toEqual({ frame: 22_050 })
+  })
+
+  it('restarts from the marker when it is moved back behind the playing range', async () => {
+    const wrapper = await mountWithSelectedPad()
+    stubSurface(wrapper)
+
+    await drag(wrapper.get('.playhead'), 10, 30)
+    await drag(wrapper.get('.playhead'), 30, 15)
+
+    const plays = invokeMock.mock.calls.filter(([command]) => command === 'audio_play')
+    expect(plays).toHaveLength(2)
+    expect(plays[1]?.[1]).toMatchObject({ request: { startFrame: 8820 } })
+    expect(invokeMock.mock.calls.some(([command]) => command === 'audio_seek')).toBe(false)
+  })
+
+  it('leaves playback alone while a region handle is dragged', async () => {
+    const wrapper = await mountWithSelectedPad()
+    stubSurface(wrapper)
+
+    await drag(wrapper.findAll('.handle')[1]!, 50, 30)
+
+    expect(invokeMock.mock.calls.some(([command]) => command === 'audio_play')).toBe(false)
+    expect(useAudioStore().isPlaying).toBe(false)
+  })
+
   it('drags the playback start marker without disturbing the region', async () => {
     const wrapper = await mountWithSelectedPad()
     stubSurface(wrapper)
@@ -232,5 +280,45 @@ describe('PadWaveform playhead dragging', () => {
     await drag(wrapper.get('.surface'), 60, 40)
 
     expect(useUiStore().playbackStartFrame).toBe(35_280)
+  })
+
+  it('assigns audio dropped onto the waveform to the selected pad', async () => {
+    const wrapper = await mountWithSelectedPad()
+    const ui = useUiStore()
+    const pads = usePadsStore()
+
+    ui.startDrag({ source: 'audio', audio: diskAudio('/samples/snare.wav') })
+    await wrapper.trigger('dragover')
+    expect(wrapper.classes()).toContain('is-drop-target')
+
+    await wrapper.trigger('drop')
+
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('/samples/snare.wav'))
+    expect(ui.dragPayload).toBeNull()
+  })
+
+  it('ignores a drop while no pad is selected', async () => {
+    const wrapper = mount(PadWaveform)
+    await flushPromises()
+    const ui = useUiStore()
+
+    ui.startDrag({ source: 'audio', audio: diskAudio('/samples/snare.wav') })
+    await wrapper.trigger('dragover')
+    expect(wrapper.classes()).not.toContain('is-drop-target')
+
+    await wrapper.trigger('drop')
+
+    expect(usePadsStore().allPads.every((pad) => pad.audio === null)).toBe(true)
+  })
+
+  it('leaves the selected pad alone when another pad is dragged onto the waveform', async () => {
+    const wrapper = await mountWithSelectedPad()
+    const ui = useUiStore()
+
+    ui.startDrag({ source: 'pad', padId: 'B2' })
+    await wrapper.trigger('dragover')
+    await wrapper.trigger('drop')
+
+    expect(usePadsStore().padById('A1')?.audio).toEqual(diskAudio('/samples/kick.wav'))
   })
 })

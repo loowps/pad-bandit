@@ -5,7 +5,7 @@ use crate::audio::peaks::PeakChunks;
 use crate::error::Result;
 
 const MAGIC: &[u8; 4] = b"PBPK";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 const HEADER_LENGTH: usize = 4 + 1 + 8 + 2 + 4 + 4 + 4;
 
 pub fn cache_directory(app_data: &Path) -> PathBuf {

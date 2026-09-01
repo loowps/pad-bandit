@@ -7,6 +7,14 @@ use crate::error::Result;
 
 pub const CHUNK_FRAMES: u32 = 1024;
 const SAMPLED_FRAMES_PER_COLUMN: u64 = 1024;
+const LEAST_EXACT_CHUNKS: u64 = 8192;
+
+fn chunk_frames_for(frames: Option<u64>) -> u32 {
+    let Some(frames) = frames.filter(|count| *count > 0) else {
+        return CHUNK_FRAMES;
+    };
+    (frames / LEAST_EXACT_CHUNKS).clamp(1, u64::from(CHUNK_FRAMES)) as u32
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeakChunks {
@@ -76,18 +84,29 @@ pub fn sampled_peaks(path: &Path, columns: usize) -> Result<Peaks> {
 
     for column in 0..columns {
         let start = frames * column as u64 / columns as u64;
+        let end = (frames * (column as u64 + 1) / columns as u64).max(start + 1);
+        let limit = start + (end - start).min(SAMPLED_FRAMES_PER_COLUMN);
         source.seek_to_frame(start)?;
 
         let mut extremes = Extremes::empty();
-        let mut gathered = 0u64;
-        while gathered < SAMPLED_FRAMES_PER_COLUMN {
-            let Some((_, samples)) = source.next_block()? else {
+        let mut reached = start;
+        while reached < limit {
+            let Some((at, samples)) = source.next_block()? else {
                 break;
             };
-            for value in mono_frames(samples, channels) {
-                extremes.add(value);
+            let block = (samples.len() / channels) as u64;
+            if block == 0 {
+                break;
             }
-            gathered += (samples.len() / channels) as u64;
+            let from = start.saturating_sub(at).min(block);
+            let to = limit.saturating_sub(at).min(block);
+            if to > from {
+                let wanted = &samples[from as usize * channels..to as usize * channels];
+                for value in mono_frames(wanted, channels) {
+                    extremes.add(value);
+                }
+            }
+            reached = at + block;
         }
         extremes.write_into(&mut min_max, column);
     }
@@ -106,6 +125,7 @@ pub fn exact_chunks(path: &Path) -> Result<PeakChunks> {
     let mut source = AudioSource::open(path)?;
     let spec = source.spec();
     let channels = usize::from(spec.channels.max(1));
+    let chunk_frames = chunk_frames_for(spec.frames);
 
     let mut min_max = Vec::new();
     let mut frames: u64 = 0;
@@ -117,7 +137,7 @@ pub fn exact_chunks(path: &Path) -> Result<PeakChunks> {
             extremes.add(value);
             frames += 1;
             in_chunk += 1;
-            if in_chunk == CHUNK_FRAMES {
+            if in_chunk == chunk_frames {
                 push_chunk(&mut min_max, &extremes);
                 extremes = Extremes::empty();
                 in_chunk = 0;
@@ -133,7 +153,7 @@ pub fn exact_chunks(path: &Path) -> Result<PeakChunks> {
         frames,
         channels: spec.channels,
         sample_rate: spec.sample_rate,
-        chunk_frames: CHUNK_FRAMES,
+        chunk_frames,
         min_max,
     })
 }
@@ -174,7 +194,7 @@ pub fn reduce(chunks: &PeakChunks, columns: usize) -> Peaks {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::testing::{write_silence_wav, write_tone_wav};
+    use crate::audio::testing::{write_late_tone_wav, write_silence_wav, write_tone_wav};
     use tempfile::TempDir;
 
     const SAMPLE_RATE: u32 = 44_100;
@@ -205,6 +225,64 @@ mod tests {
     }
 
     #[test]
+    fn short_files_are_chunked_finely_and_long_ones_stay_coarse() {
+        assert_eq!(chunk_frames_for(None), CHUNK_FRAMES);
+        assert_eq!(chunk_frames_for(Some(0)), CHUNK_FRAMES);
+        assert_eq!(chunk_frames_for(Some(u64::from(SAMPLE_RATE) * 600)), CHUNK_FRAMES);
+        assert!(chunk_frames_for(Some(u64::from(SAMPLE_RATE) / 2)) < CHUNK_FRAMES);
+    }
+
+    #[test]
+    fn a_short_file_yields_more_chunks_than_a_wide_view_has_columns() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("short.wav");
+        write_tone_wav(&path, 440.0, SAMPLE_RATE, SAMPLE_RATE / 4, 1, 0.8);
+
+        let chunks = exact_chunks(&path).expect("chunks");
+        let count = chunks.min_max.len() / 2;
+
+        assert!(chunks.chunk_frames < CHUNK_FRAMES);
+        assert!(count >= 4096, "a quarter-second file gave only {count} chunks");
+    }
+
+    #[test]
+    fn a_short_file_fills_a_wide_view_without_stepping() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("short.wav");
+        write_tone_wav(&path, 440.0, SAMPLE_RATE, SAMPLE_RATE / 4, 1, 0.8);
+
+        let columns = 1200;
+        let peaks = reduce(&exact_chunks(&path).expect("chunks"), columns);
+
+        let repeated = (1..columns)
+            .filter(|column| {
+                peaks.min_max[column * 2] == peaks.min_max[(column - 1) * 2]
+                    && peaks.min_max[column * 2 + 1] == peaks.min_max[(column - 1) * 2 + 1]
+            })
+            .count();
+
+        assert!(
+            repeated * 10 < columns,
+            "{repeated} of {columns} columns repeat the one before â€” the view is a staircase"
+        );
+    }
+
+    #[test]
+    fn the_sampled_pass_does_not_smear_a_short_file_across_columns() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("late.wav");
+        write_late_tone_wav(&path, SAMPLE_RATE, SAMPLE_RATE / 4, 1);
+
+        let peaks = sampled_peaks(&path, 64).expect("peaks");
+
+        for column in 0..30 {
+            let max = peaks.min_max[column * 2 + 1];
+            assert!(max.abs() < 0.05, "column {column} bled from the loud half: {max}");
+        }
+        assert!(peaks.min_max[63 * 2 + 1] > 0.7);
+    }
+
+    #[test]
     fn the_sampled_pass_reads_far_less_than_the_whole_file() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("large.wav");
@@ -231,7 +309,7 @@ mod tests {
         assert!(size > 20_000_000, "fixture should be large, was {size}");
         assert!(
             read < size / 10,
-            "sampled pass read {read} of {size} bytes — it is loading the file whole"
+            "sampled pass read {read} of {size} bytes â€” it is loading the file whole"
         );
     }
 
@@ -338,3 +416,5 @@ mod tests {
         assert_eq!(peaks.min_max, vec![0.0; 8]);
     }
 }
+
+

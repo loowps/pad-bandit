@@ -18,25 +18,25 @@ defineProps<{ bank: Bank }>()
 .bank {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.625rem;
+  gap: 0.625rem;
+  padding: 0.875rem;
   background-color: var(--panel-surface);
   border: 1px solid var(--panel-border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
 }
 
 .bank-name {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .pad-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 0.3125rem;
+  gap: 0.4375rem;
 }
 </style>

@@ -5,6 +5,7 @@ import {
   MIN_REGION_SECONDS,
   minRegionFrames,
   moveRegion,
+  playedSpan,
   setRegionEnd,
   setRegionStart,
 } from '@/domain/region'
@@ -101,5 +102,27 @@ describe('clampPlaybackStart', () => {
 
   it('collapses to the start of an empty region', () => {
     expect(clampPlaybackStart(500, { start: 0, end: 0 })).toBe(0)
+  })
+})
+
+describe('playedSpan', () => {
+  it('paints nothing while no source is playing', () => {
+    expect(playedSpan(null, 0.25, 100)).toEqual({ from: 0, to: 0 })
+  })
+
+  it('starts the highlight where playback started, not at the buffer start', () => {
+    expect(playedSpan(0.6, 0.25, 100)).toEqual({ from: 25, to: 60 })
+  })
+
+  it('never runs backwards when the position is behind the start', () => {
+    expect(playedSpan(0.1, 0.25, 100)).toEqual({ from: 25, to: 25 })
+  })
+
+  it('keeps both ends inside the column range', () => {
+    expect(playedSpan(4, -2, 100)).toEqual({ from: 0, to: 100 })
+  })
+
+  it('has nothing to paint without columns', () => {
+    expect(playedSpan(0.5, 0, 0)).toEqual({ from: 0, to: 0 })
   })
 })
