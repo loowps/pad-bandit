@@ -217,8 +217,6 @@ function movePlaybackStart(clientX: number): void {
   ui.setPlaybackStart(clampPlaybackStart(frameAt(clientX) + playheadGrabOffset, region.value))
 }
 
-
-
 function beginDrag(mode: DragMode, event: PointerEvent): void {
   if (totalFrames.value === 0) {
     return

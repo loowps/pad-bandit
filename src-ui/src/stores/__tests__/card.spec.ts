@@ -258,6 +258,32 @@ describe('card presence', () => {
     expect(card.presence).toBe('unknown')
   })
 
+  it('reports nothing while paused, so a sync writing to the card is not read as a change', async () => {
+    const card = useCardStore()
+    await card.restore()
+
+    card.pausePresence()
+    presence = { present: true, fingerprint: 'presence-mid-write' }
+    await card.checkPresence()
+
+    expect(card.presence).toBe('present')
+
+    card.resumePresence()
+    await card.checkPresence()
+
+    expect(card.presence).toBe('stale')
+  })
+
+  it('never runs two checks at once', async () => {
+    const card = useCardStore()
+    await card.restore()
+    invokeMock.mockClear()
+
+    await Promise.all([card.checkPresence(), card.checkPresence(), card.checkPresence()])
+
+    expect(invokeMock.mock.calls.filter(([command]) => command === 'card_presence')).toHaveLength(1)
+  })
+
   it('adopting a freshly written card takes a new baseline', async () => {
     const card = useCardStore()
     await card.restore()

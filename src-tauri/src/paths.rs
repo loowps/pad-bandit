@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Scopes {
     card_root: Option<PathBuf>,
     app_data: PathBuf,

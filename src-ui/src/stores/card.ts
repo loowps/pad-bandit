@@ -17,6 +17,8 @@ export const useCardStore = defineStore('card', () => {
   const presence = ref<CardPresenceState>('unknown')
   let seenAt: string | null = null
   let poll: ReturnType<typeof setInterval> | null = null
+  let paused = false
+  let checkInFlight = false
   const status = ref<CardStatus>('empty')
   const error = ref<string | null>(null)
 
@@ -89,16 +91,27 @@ export const useCardStore = defineStore('card', () => {
   }
 
   async function checkPresence(): Promise<CardPresenceState> {
-    if (status.value !== 'valid' || seenAt === null) {
+    if (paused || checkInFlight || status.value !== 'valid' || seenAt === null) {
       return presence.value
     }
+    checkInFlight = true
     try {
       const now = await readCardPresence()
       presence.value = !now.present ? 'missing' : now.fingerprint === seenAt ? 'present' : 'stale'
     } catch {
       presence.value = 'missing'
+    } finally {
+      checkInFlight = false
     }
     return presence.value
+  }
+
+  function pausePresence(): void {
+    paused = true
+  }
+
+  function resumePresence(): void {
+    paused = false
   }
 
   function watchPresence(): void {
@@ -144,6 +157,8 @@ export const useCardStore = defineStore('card', () => {
     clear,
     adopt,
     checkPresence,
+    pausePresence,
+    resumePresence,
     watchPresence,
     stopWatching,
   }

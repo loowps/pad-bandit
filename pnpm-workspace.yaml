@@ -10,6 +10,3 @@ trustPolicyIgnoreAfter: 43200
 
 allowBuilds:
   esbuild: true
-
-overrides:
-  fastq: 1.20.1

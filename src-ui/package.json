@@ -18,11 +18,15 @@
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
+    "check": "run-s \"check:*\"",
+    "check:oxlint": "oxlint .",
+    "check:eslint": "eslint .",
+    "check:format": "prettier --check --experimental-cli src",
     "format": "prettier --write --experimental-cli src"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-opener": "^2.5.4",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "@vueuse/core": "^14.4.0",
     "pinia": "^4.0.3",
     "vue": "^3.5.42",

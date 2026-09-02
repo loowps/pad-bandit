@@ -61,22 +61,22 @@ pub async fn pick_folder(app: AppHandle) -> Option<PathBuf> {
         .and_then(|picked| picked.into_path().ok())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_dir(state: State<'_, AppState>, path: PathBuf) -> Result<Vec<Entry>> {
-    state.with_scopes(|scopes| crate::fs::list_dir(scopes, &path))
+    crate::fs::list_dir(&state.scopes(), &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn card_read(state: State<'_, AppState>) -> Result<CardState> {
     state.read_card()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn card_presence(state: State<'_, AppState>) -> CardPresence {
     state.card_presence()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_preflight(state: State<'_, AppState>, plan: SyncPlan) -> Result<Preflight> {
     state.preflight(&plan)
 }
@@ -226,14 +226,14 @@ pub struct ExactPeaks {
     pub peaks: Peaks,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_peaks(
     app: AppHandle,
     state: State<'_, AppState>,
     path: PathBuf,
     columns: usize,
 ) -> Result<Peaks> {
-    let resolved = state.with_scopes(|scopes| scopes.readable(&path))?;
+    let resolved = state.scopes().readable(&path)?;
     let app_data = state.app_data();
     let key = cache::cache_key(&resolved)?;
 
@@ -291,13 +291,13 @@ impl PlaybackEvents for PlaybackBridge {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_play(
     state: State<'_, AppState>,
     player: State<'_, Player>,
     request: PlayRequest,
 ) -> Result<()> {
-    let path = state.with_scopes(|scopes| scopes.readable(&request.path))?;
+    let path = state.scopes().readable(&request.path)?;
     player.play(&PlayRequest { path, ..request })
 }
 

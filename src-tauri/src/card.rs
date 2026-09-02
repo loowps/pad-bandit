@@ -301,11 +301,12 @@ pub struct PadEdit {
 pub fn edited_record(base: &PadRecord, edit: &PadEdit) -> PadRecord {
     let block_align = block_align(base.channels);
     let settings = edit.settings;
+    let (user_start, user_end) = region_within(base, edit, block_align);
 
     PadRecord {
-        user_start: clamped_byte_offset(edit.start_frame, block_align),
-        user_end: clamped_byte_offset(edit.end_frame, block_align),
-        volume: settings.volume,
+        user_start,
+        user_end,
+        volume: settings.volume.min(MAX_VOLUME),
         lofi: u8::from(settings.lofi),
         looping: u8::from(settings.looping),
         gate: u8::from(settings.gate),
@@ -321,6 +322,7 @@ pub fn edited_record(base: &PadRecord, edit: &PadEdit) -> PadRecord {
     }
 }
 
+pub const MAX_VOLUME: u8 = 127;
 pub const DEFAULT_TEMPO: u32 = 1200;
 pub const WAVE_SAMPLE_INDEX_OFFSET: u64 = 58;
 pub const AIFF_SAMPLE_INDEX_OFFSET: u64 = 62;
@@ -440,6 +442,18 @@ fn encode_record(record: &PadRecord) -> [u8; BYTES_PER_PAD] {
 
 fn clamped_byte_offset(frame: u64, block_align: u32) -> u32 {
     frame_to_byte_offset(frame, block_align).min(u64::from(u32::MAX)) as u32
+}
+
+fn region_within(base: &PadRecord, edit: &PadEdit, block_align: u32) -> (u32, u32) {
+    let first = byte_offset_to_frame(base.original_start, block_align);
+    let last = byte_offset_to_frame(base.original_end, block_align).max(first);
+    let start = edit.start_frame.clamp(first, last);
+    let end = edit.end_frame.clamp(start, last);
+
+    (
+        clamped_byte_offset(start, block_align),
+        clamped_byte_offset(end, block_align),
+    )
 }
 
 fn stored_tempo(tempo: f32) -> u32 {
@@ -1041,6 +1055,100 @@ mod tests {
     }
 
     #[test]
+    fn a_region_reaching_past_the_file_is_pulled_back_to_its_last_frame() {
+        let stereo = records()[0];
+        let frames = u64::from(stereo.original_end - stereo.original_start) / 4;
+        let edit = PadEdit {
+            start_frame: 1_000,
+            end_frame: frames + 500_000,
+            ..edit_of(&stereo)
+        };
+
+        let edited = edited_record(&stereo, &edit);
+
+        assert_eq!(edited.user_end, stereo.original_end);
+        assert!(edited.user_start < edited.user_end);
+    }
+
+    #[test]
+    fn a_region_starting_past_the_file_collapses_at_its_last_frame() {
+        let stereo = records()[0];
+        let edit = PadEdit {
+            start_frame: u64::MAX,
+            end_frame: u64::MAX,
+            ..edit_of(&stereo)
+        };
+
+        let edited = edited_record(&stereo, &edit);
+
+        assert_eq!(edited.user_start, stereo.original_end);
+        assert_eq!(edited.user_end, stereo.original_end);
+    }
+
+    #[test]
+    fn a_region_whose_end_precedes_its_start_is_never_written_inverted() {
+        let stereo = records()[0];
+        let edit = PadEdit {
+            start_frame: 40_000,
+            end_frame: 12,
+            ..edit_of(&stereo)
+        };
+
+        let edited = edited_record(&stereo, &edit);
+
+        assert_eq!(edited.user_start, 512 + 40_000 * 4);
+        assert_eq!(edited.user_end, edited.user_start);
+    }
+
+    #[test]
+    fn a_clamped_region_still_lands_on_whole_frames() {
+        let mut mono = records()[0];
+        mono.channels = 1;
+        mono.original_end = mono.original_start + 3 * 2 + 1;
+        let edit = PadEdit {
+            start_frame: 0,
+            end_frame: u64::MAX,
+            ..edit_of(&mono)
+        };
+
+        let edited = edited_record(&mono, &edit);
+
+        assert_eq!((edited.user_end - AUDIO_DATA_OFFSET) % 2, 0);
+        assert_eq!(edited.user_end, mono.original_start + 3 * 2);
+    }
+
+    #[test]
+    fn a_volume_above_the_cards_range_is_capped_rather_than_written_through() {
+        let original = records()[0];
+        let edit = PadEdit {
+            settings: PadSettings {
+                volume: 240,
+                ..settings_of(&original)
+            },
+            ..edit_of(&original)
+        };
+
+        let edited = edited_record(&original, &edit);
+
+        assert_eq!(edited.volume, MAX_VOLUME);
+    }
+
+    #[test]
+    fn a_recorded_sample_cannot_be_given_a_region_longer_than_what_was_written() {
+        let bytes = u64::from(AUDIO_DATA_OFFSET) + 4_000;
+        let edit = PadEdit {
+            start_frame: 0,
+            end_frame: 100_000,
+            ..edit_of(&records()[0])
+        };
+
+        let recorded = recorded_record(2, bytes, &edit);
+
+        assert_eq!(recorded.user_end, recorded.original_end);
+        assert_eq!(recorded.user_end, bytes as u32);
+    }
+
+    #[test]
     fn an_edit_leaves_the_fields_only_the_card_owns_alone() {
         let original = records()[0];
         let edit = PadEdit {
@@ -1113,7 +1221,8 @@ mod tests {
 
         let edited = edited_record(&original, &edit);
 
-        assert_eq!(edited.user_end, u32::MAX);
+        assert_ne!(edited.user_end, u32::MAX);
+        assert_eq!(edited.user_end, original.original_end);
     }
 
     #[test]

@@ -60,22 +60,15 @@ export function useWaveformPeaks(path: Ref<string | null>, columns: Ref<number>)
 
   watch([path, settledColumns], () => void load(), { immediate: true })
 
-  let unlisten: (() => void) | null = null
-  void onExactPeaks((payload) => {
+  const listener = onExactPeaks((payload) => {
     if (payload.path === path.value && payload.peaks.columns === peaks.value?.columns) {
       peaks.value = payload.peaks
     }
   })
-    .then((stop) => {
-      unlisten = stop
-    })
-    .catch(() => {
-      unlisten = null
-    })
 
   onScopeDispose(() => {
     requestToken += 1
-    unlisten?.()
+    void listener.then((unlisten) => unlisten()).catch(() => {})
   })
 
   return { peaks, isLoading, error }

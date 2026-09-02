@@ -284,10 +284,31 @@ describe('running the sync', () => {
     expect(sync.running).toBe(false)
   })
 
-  it('keeps the pending work when the write fails', async () => {
-    const pads = editedCard()
+  it('holds the presence poll back while it writes and lets it go again afterwards', async () => {
+    editedCard()
+    const card = useCardStore()
     const sync = useSyncStore()
     await sync.check()
+
+    const pause = vi.spyOn(card, 'pausePresence')
+    const resume = vi.spyOn(card, 'resumePresence')
+    let heldDuringWrite = false
+    progressDuringApply = () => {
+      heldDuringWrite = pause.mock.calls.length === 1 && resume.mock.calls.length === 0
+    }
+
+    await sync.run()
+
+    expect(heldDuringWrite).toBe(true)
+    expect(resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the pending work when the write fails', async () => {
+    const pads = editedCard()
+    const card = useCardStore()
+    const sync = useSyncStore()
+    await sync.check()
+    const resume = vi.spyOn(card, 'resumePresence')
     failApply = 'the card went away'
 
     expect(await sync.run()).toBeNull()
@@ -295,6 +316,7 @@ describe('running the sync', () => {
     expect(sync.error).toContain('went away')
     expect(pads.hasPreparedPads).toBe(true)
     expect(sync.running).toBe(false)
+    expect(resume).toHaveBeenCalledTimes(1)
   })
 
   it('cancelling asks Rust to stop', async () => {

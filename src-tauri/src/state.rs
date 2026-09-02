@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, TryLockError};
 
-use crate::card::{CardState, LoadedCard};
+use crate::card::CardState;
 use crate::config::{Config, ConfigStore, Theme};
 use crate::error::{Error, Result};
 use crate::paths::{FileGrants, Scopes};
@@ -10,6 +10,7 @@ use crate::sync::{Preflight, SyncPlan};
 
 pub struct AppState {
     inner: Mutex<Inner>,
+    syncing: Mutex<()>,
     cancellation: crate::sync::apply::Cancellation,
 }
 
@@ -24,7 +25,6 @@ struct Inner {
     store: ConfigStore,
     scopes: Scopes,
     grants: FileGrants,
-    card: Option<LoadedCard>,
 }
 
 impl AppState {
@@ -42,12 +42,8 @@ impl AppState {
         grants.grant_all(&store.config().recent_projects);
 
         Ok(Self {
-            inner: Mutex::new(Inner {
-                store,
-                scopes,
-                grants,
-                card: None,
-            }),
+            inner: Mutex::new(Inner { store, scopes, grants }),
+            syncing: Mutex::new(()),
             cancellation: crate::sync::apply::Cancellation::default(),
         })
     }
@@ -61,17 +57,12 @@ impl AppState {
         plan: &SyncPlan,
         report: &mut dyn FnMut(crate::sync::apply::Progress),
     ) -> Result<SyncResult> {
+        let _running = self.claim_sync()?;
         self.cancellation.reset();
 
-        let mut inner = self.lock();
-        let card_path = inner
-            .store
-            .config()
-            .card_path
-            .clone()
-            .ok_or(Error::NoCardSelected)?;
-        let app_data = inner.scopes.app_data().to_path_buf();
-        let loaded = crate::card::read_card(&inner.scopes, &card_path)?;
+        let (scopes, card_path) = self.card_scope()?;
+        let app_data = scopes.app_data().to_path_buf();
+        let loaded = crate::card::read_card(&scopes, &card_path)?;
 
         if crate::sync::card_fingerprint(&loaded) != plan.card_fingerprint {
             return Err(Error::CardChanged);
@@ -79,7 +70,7 @@ impl AppState {
 
         let outcome = {
             let mut context = crate::sync::apply::Apply {
-                scopes: &inner.scopes,
+                scopes: &scopes,
                 card: &loaded,
                 app_data: &app_data,
                 cancel: Some(self.cancellation.handle()),
@@ -88,9 +79,7 @@ impl AppState {
             crate::sync::apply::apply_plan(&mut context, plan)?
         };
 
-        let reread = crate::card::read_card(&inner.scopes, &card_path)?;
-        let card = reread.state();
-        inner.card = Some(reread);
+        let card = crate::card::read_card(&scopes, &card_path)?.state();
         Ok(SyncResult { outcome, card })
     }
 
@@ -125,10 +114,12 @@ impl AppState {
     }
 
     pub fn set_card_path(&self, path: Option<&Path>) -> Result<Config> {
+        if self.is_syncing() {
+            return Err(Error::SyncInProgress);
+        }
         let mut inner = self.lock();
         let resolved = inner.scopes.set_card_root(path)?;
         inner.store.set_card_path(resolved)?;
-        inner.card = None;
         Ok(inner.store.config().clone())
     }
 
@@ -197,51 +188,54 @@ impl AppState {
     }
 
     pub fn read_card(&self) -> Result<CardState> {
-        let mut inner = self.lock();
-        let card_path = inner
-            .store
-            .config()
-            .card_path
-            .clone()
-            .ok_or(Error::NoCardSelected)?;
-
-        let loaded = crate::card::read_card(&inner.scopes, &card_path)?;
-        let state = loaded.state();
-        inner.card = Some(loaded);
-        Ok(state)
+        let (scopes, card_path) = self.card_scope()?;
+        Ok(crate::card::read_card(&scopes, &card_path)?.state())
     }
 
     pub fn card_presence(&self) -> crate::card::CardPresence {
-        let inner = self.lock();
-        match inner.store.config().card_path.clone() {
-            Some(path) => crate::card::presence(&inner.scopes, &path),
-            None => crate::card::CardPresence { present: false, fingerprint: None },
+        match self.card_scope() {
+            Ok((scopes, card_path)) => crate::card::presence(&scopes, &card_path),
+            Err(_) => crate::card::CardPresence { present: false, fingerprint: None },
         }
     }
 
     pub fn preflight(&self, plan: &SyncPlan) -> Result<Preflight> {
-        let mut inner = self.lock();
+        let (scopes, card_path) = self.card_scope()?;
+        let loaded = crate::card::read_card(&scopes, &card_path)?;
+        let free = crate::sync::free_space(&card_path)?;
+        Ok(crate::sync::preflight(
+            &scopes,
+            &loaded,
+            plan,
+            &crate::sync::Budget::on(free),
+        ))
+    }
+
+    pub fn scopes(&self) -> Scopes {
+        self.lock().scopes.clone()
+    }
+
+    fn card_scope(&self) -> Result<(Scopes, PathBuf)> {
+        let inner = self.lock();
         let card_path = inner
             .store
             .config()
             .card_path
             .clone()
             .ok_or(Error::NoCardSelected)?;
-
-        let loaded = crate::card::read_card(&inner.scopes, &card_path)?;
-        let free = crate::sync::free_space(&card_path)?;
-        let report = crate::sync::preflight(
-            &inner.scopes,
-            &loaded,
-            plan,
-            &crate::sync::Budget::on(free),
-        );
-        inner.card = Some(loaded);
-        Ok(report)
+        Ok((inner.scopes.clone(), card_path))
     }
 
-    pub fn with_scopes<T>(&self, read: impl FnOnce(&Scopes) -> T) -> T {
-        read(&self.lock().scopes)
+    fn claim_sync(&self) -> Result<MutexGuard<'_, ()>> {
+        match self.syncing.try_lock() {
+            Ok(guard) => Ok(guard),
+            Err(TryLockError::Poisoned(poisoned)) => Ok(poisoned.into_inner()),
+            Err(TryLockError::WouldBlock) => Err(Error::SyncInProgress),
+        }
+    }
+
+    fn is_syncing(&self) -> bool {
+        matches!(self.syncing.try_lock(), Err(TryLockError::WouldBlock))
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -293,11 +287,11 @@ mod tests {
 
         let sample = f.browse.join("kick.wav");
         f.state
-            .with_scopes(|scopes| scopes.readable(&sample))
+            .scopes().readable(&sample)
             .expect("readable");
         assert!(
             f.state
-                .with_scopes(|scopes| scopes.writable(&sample))
+                .scopes().writable(&sample)
                 .is_err()
         );
 
@@ -306,7 +300,7 @@ mod tests {
         assert_eq!(restarted.config().browse_folders, config.browse_folders);
         assert!(
             restarted
-                .with_scopes(|scopes| scopes.readable(&sample))
+                .scopes().readable(&sample)
                 .is_ok()
         );
     }
@@ -321,7 +315,7 @@ mod tests {
 
         assert!(
             f.state
-                .with_scopes(|scopes| scopes.readable(&f.browse.join("kick.wav")))
+                .scopes().readable(&f.browse.join("kick.wav"))
                 .is_err()
         );
     }
@@ -334,14 +328,14 @@ mod tests {
         f.state.set_card_path(Some(&f.card)).expect("set card path");
         assert!(
             f.state
-                .with_scopes(|scopes| scopes.writable(&pad_info))
+                .scopes().writable(&pad_info)
                 .is_ok()
         );
 
         f.state.set_card_path(None).expect("clear card path");
         assert!(
             f.state
-                .with_scopes(|scopes| scopes.writable(&pad_info))
+                .scopes().writable(&pad_info)
                 .is_err()
         );
         assert_eq!(f.state.config().card_path, None);
@@ -366,5 +360,108 @@ mod tests {
 
         assert!(f.state.add_browse_folder(&missing).is_err());
         assert!(f.state.config().browse_folders.is_empty());
+    }
+
+    fn write_one_slot_card(card_root: &Path) {
+        let samples = crate::card::sample_directory(card_root);
+        std::fs::create_dir_all(&samples).expect("card dirs");
+
+        let mut table = vec![0u8; crate::card::PAD_COUNT * 32];
+        let end = 512u32 + 4_000;
+        table[0..4].copy_from_slice(&512u32.to_be_bytes());
+        table[4..8].copy_from_slice(&end.to_be_bytes());
+        table[8..12].copy_from_slice(&512u32.to_be_bytes());
+        table[12..16].copy_from_slice(&end.to_be_bytes());
+        table[16] = 127;
+        table[19] = 1;
+        table[21] = 1;
+        table[22] = 2;
+        table[24..28].copy_from_slice(&1199u32.to_be_bytes());
+        table[28..32].copy_from_slice(&1199u32.to_be_bytes());
+        std::fs::write(samples.join(crate::card::PAD_INFO_FILE_NAME), &table).expect("pad info");
+
+        let sample = samples.join(crate::card::sample_file_name(0));
+        crate::audio::testing::write_silence_wav(&sample, 44_100, 1_000, 2);
+        crate::card::write_sample_index(&sample, 0).expect("sample index");
+    }
+
+    fn settings_only_plan(fingerprint: String) -> SyncPlan {
+        SyncPlan {
+            card_fingerprint: fingerprint,
+            slots: vec![crate::sync::PlannedSlot {
+                slot: 0,
+                action: crate::sync::PlannedAction::Settings,
+                edit: crate::card::PadEdit {
+                    settings: crate::card::PadSettings {
+                        volume: 100,
+                        lofi: false,
+                        looping: false,
+                        gate: true,
+                        reverse: false,
+                        tempo_mode: crate::card::TempoMode::Off,
+                        original_tempo: 120.0,
+                        user_tempo: 120.0,
+                    },
+                    start_frame: 0,
+                    end_frame: 0,
+                },
+            }],
+        }
+    }
+
+    fn card_under_sync() -> (Fixture, SyncPlan) {
+        let f = fixture();
+        write_one_slot_card(&f.card);
+        f.state.set_card_path(Some(&f.card)).expect("set card path");
+        let plan = settings_only_plan(f.state.read_card().expect("read card").fingerprint);
+        (f, plan)
+    }
+
+    #[test]
+    fn a_running_sync_still_answers_reads_from_another_caller() {
+        let (f, plan) = card_under_sync();
+        let mut probed = None;
+
+        let mut report = |_: crate::sync::apply::Progress| {
+            probed.get_or_insert_with(|| {
+                (
+                    f.state.card_presence().present,
+                    f.state.config().card_path.is_some(),
+                    f.state.scopes().writable(&f.card.join("x")).is_ok(),
+                )
+            });
+        };
+        f.state.apply_plan(&plan, &mut report).expect("apply");
+
+        assert_eq!(probed, Some((true, true, true)));
+    }
+
+    #[test]
+    fn a_running_sync_refuses_a_second_sync_and_a_card_change() {
+        let (f, plan) = card_under_sync();
+        let mut refusals = None;
+
+        let mut report = |_: crate::sync::apply::Progress| {
+            refusals.get_or_insert_with(|| {
+                let second = f.state.apply_plan(&plan, &mut |_| {}).unwrap_err();
+                let retarget = f.state.set_card_path(None).unwrap_err();
+                (second.to_string(), retarget.to_string())
+            });
+        };
+        f.state.apply_plan(&plan, &mut report).expect("apply");
+
+        let busy = Error::SyncInProgress.to_string();
+        assert_eq!(refusals, Some((busy.clone(), busy)));
+        assert!(f.state.config().card_path.is_some());
+    }
+
+    #[test]
+    fn the_card_can_be_retargeted_once_the_sync_has_finished() {
+        let (f, plan) = card_under_sync();
+
+        f.state.apply_plan(&plan, &mut |_| {}).expect("apply");
+
+        f.state.set_card_path(None).expect("clear card path");
+        assert_eq!(f.state.config().card_path, None);
     }
 }

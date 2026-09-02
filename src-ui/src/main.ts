@@ -10,7 +10,9 @@ const padSweepDurationMs = 1000
 
 const padSweepFinished = () => {
   const remaining = padSweepDurationMs - performance.now()
-  return remaining > 0 ? new Promise((resolve) => setTimeout(resolve, remaining)) : Promise.resolve()
+  return remaining > 0
+    ? new Promise((resolve) => setTimeout(resolve, remaining))
+    : Promise.resolve()
 }
 
 const app = createApp(App)
