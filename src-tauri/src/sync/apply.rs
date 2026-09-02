@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::audio::encode;
 use crate::card::{
-    self, LoadedCard, PAD_INFO_FILE_NAME, PadRecord, emptied_record, recorded_record,
+    self, LoadedCard, PAD_INFO_FILE_NAME, PadEdit, PadRecord, emptied_record, recorded_record,
     sample_file_name,
 };
 use crate::error::{Error, Result};
@@ -245,9 +245,21 @@ fn write_sample(
     state.bytes_done += written.bytes;
     records.insert(
         planned.slot,
-        recorded_record(written.channels as u8, written.bytes, &planned.edit),
+        recorded_record(
+            written.channels as u8,
+            written.bytes,
+            &edit_at_card_rate(&planned.edit, written.source_rate),
+        ),
     );
     Ok(())
+}
+
+fn edit_at_card_rate(edit: &PadEdit, source_rate: u32) -> PadEdit {
+    PadEdit {
+        start_frame: encode::resampled_frames(edit.start_frame, source_rate),
+        end_frame: encode::resampled_frames(edit.end_frame, source_rate),
+        ..*edit
+    }
 }
 
 fn rename_moved_samples(
@@ -452,8 +464,12 @@ mod tests {
         }
 
         fn source(&self, name: &str, frames: u32) -> PathBuf {
+            self.source_at(name, 44_100, frames)
+        }
+
+        fn source_at(&self, name: &str, rate: u32, frames: u32) -> PathBuf {
             let path = self.browse.join(name);
-            testing::write_silence_wav(&path, 44_100, frames, 2);
+            testing::write_silence_wav(&path, rate, frames, 2);
             path
         }
 
@@ -537,6 +553,47 @@ mod tests {
         assert_eq!(&bytes[504..508], b"data");
         assert_eq!(bytes.len(), 512 + 800 * 4);
         assert_eq!(card::read_sample_index(&landed).expect("index"), 5);
+    }
+
+    #[test]
+    fn a_region_trimmed_on_a_source_at_another_rate_lands_at_the_same_moment_on_the_card() {
+        let f = fixture(2);
+        let source = f.source_at("kick.wav", 48_000, 48_000);
+        let trimmed = PlannedSlot {
+            edit: crate::card::PadEdit {
+                start_frame: 12_000,
+                end_frame: 36_000,
+                ..edit()
+            },
+            ..write(5, source)
+        };
+
+        f.run(&plan(vec![trimmed]));
+
+        let record = f.card().records()[5];
+        let block_align = 4;
+        assert_eq!(record.user_start, 512 + 11_025 * block_align);
+        assert_eq!(record.user_end, 512 + 33_075 * block_align);
+    }
+
+    #[test]
+    fn a_region_on_a_source_already_at_the_cards_rate_is_written_through_unchanged() {
+        let f = fixture(2);
+        let source = f.source("kick.wav", 44_100);
+        let trimmed = PlannedSlot {
+            edit: crate::card::PadEdit {
+                start_frame: 12_000,
+                end_frame: 36_000,
+                ..edit()
+            },
+            ..write(5, source)
+        };
+
+        f.run(&plan(vec![trimmed]));
+
+        let record = f.card().records()[5];
+        assert_eq!(record.user_start, 512 + 12_000 * 4);
+        assert_eq!(record.user_end, 512 + 36_000 * 4);
     }
 
     #[test]

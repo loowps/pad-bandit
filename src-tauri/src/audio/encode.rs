@@ -20,14 +20,16 @@ pub struct CardSample {
     pub channels: u16,
     pub frames: u64,
     pub bytes: u64,
+    pub source_rate: u32,
 }
 
 impl CardSample {
-    fn of(channels: u16, frames: u64) -> Self {
+    fn of(channels: u16, frames: u64, source_rate: u32) -> Self {
         Self {
             channels,
             frames,
             bytes: u64::from(AUDIO_DATA_OFFSET) + frames * u64::from(block_align(channels)),
+            source_rate,
         }
     }
 }
@@ -49,10 +51,11 @@ pub fn estimate(path: &Path) -> Result<CardSample> {
     Ok(CardSample::of(
         card_channels(spec.channels),
         resampled_frames(frames, spec.sample_rate),
+        spec.sample_rate,
     ))
 }
 
-fn resampled_frames(frames: u64, from_rate: u32) -> u64 {
+pub fn resampled_frames(frames: u64, from_rate: u32) -> u64 {
     if from_rate == CARD_SAMPLE_RATE {
         return frames;
     }
@@ -87,7 +90,7 @@ pub fn encode_to_card(source: &Path, destination: &Path, slot: u8) -> Result<Car
         frames += write_pcm(&mut writer, &resampled, channels)?;
     }
 
-    let sample = CardSample::of(channels, frames);
+    let sample = CardSample::of(channels, frames, spec.sample_rate);
     write_header(&mut writer, slot, &sample)?;
     writer.flush()?;
     writer.into_inner().map_err(|error| Error::Audio(error.to_string()))?.sync_all()?;

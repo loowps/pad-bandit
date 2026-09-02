@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { useWaveformPeaks } from '@/composables/useWaveformPeaks'
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -12,6 +13,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 }))
 
 const invokeMock = vi.mocked(invoke)
+const listenMock = vi.mocked(listen)
 
 function peaksOf(columns: number) {
   return { minMax: [-1, 1], columns, frames: 88_200, channels: 2, sampleRate: 44_100, exact: false }
@@ -109,5 +111,26 @@ describe('useWaveformPeaks', () => {
 
     expect(view.peaks.value).toBeNull()
     expect(view.isLoading.value).toBe(false)
+  })
+
+  it('stops listening even when the waveform closes before the listener is registered', async () => {
+    answerWithRequestedColumns()
+    const unlisten = vi.fn<() => void>()
+    let register!: (stop: () => void) => void
+    listenMock.mockImplementationOnce(
+      () =>
+        new Promise<() => void>((resolve) => {
+          register = resolve
+        }),
+    )
+
+    read(ref('/samples/kick.wav'), ref(600))
+    scope?.stop()
+    scope = null
+
+    register(unlisten)
+    await settle()
+
+    expect(unlisten).toHaveBeenCalledTimes(1)
   })
 })
