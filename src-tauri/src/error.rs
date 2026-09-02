@@ -29,6 +29,9 @@ pub enum Error {
     #[error("the card changed since this plan was built")]
     CardChanged,
 
+    #[error("a sync is already running")]
+    SyncInProgress,
+
     #[error("no browse folder with id {0}")]
     UnknownFolder(String),
 

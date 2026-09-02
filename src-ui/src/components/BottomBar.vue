@@ -69,15 +69,24 @@ const presenceLabel = computed(() => {
         class="card-chip"
         aria-label="Change card folder…"
         :title="card.rootPath ?? ''"
+        :disabled="sync.running"
         @click="card.pickCard()"
       >
         <span class="presence" :class="card.presence" aria-hidden="true" />
         <span class="path">{{ card.path }}</span>
       </button>
       <span class="status" :class="card.isValid ? 'is-valid' : 'is-invalid'">
-        {{ card.isValid ? 'Card folder recognised' : card.error }}
+        {{
+          sync.running ? 'Writing to card…' : card.isValid ? 'Card folder recognised' : card.error
+        }}
       </span>
-      <button type="button" class="clear" aria-label="Forget card folder" @click="card.clear()">
+      <button
+        type="button"
+        class="clear"
+        aria-label="Forget card folder"
+        :disabled="sync.running"
+        @click="card.clear()"
+      >
         ✕
       </button>
     </template>
@@ -106,7 +115,7 @@ const presenceLabel = computed(() => {
       <button
         type="button"
         class="sync"
-        :disabled="!pads.hasPreparedPads || card.presence !== 'present'"
+        :disabled="!pads.hasPreparedPads || card.presence !== 'present' || sync.running"
         @click="sync.open()"
       >
         Sync to card
@@ -155,13 +164,19 @@ const presenceLabel = computed(() => {
 
 .pick:hover,
 .discard:hover,
-.clear:hover {
+.clear:hover:not(:disabled) {
   border-color: var(--text-subtle);
 }
 
-.clear:hover {
+.clear:hover:not(:disabled) {
   color: var(--text-default);
   background: var(--control-track);
+}
+
+.clear:disabled,
+.card-chip:disabled {
+  color: var(--text-subtle);
+  cursor: default;
 }
 
 .pick:focus-visible,
@@ -188,7 +203,7 @@ const presenceLabel = computed(() => {
   border-radius: var(--radius-md);
 }
 
-.card-chip:hover {
+.card-chip:hover:not(:disabled) {
   background: var(--control-track);
 }
 

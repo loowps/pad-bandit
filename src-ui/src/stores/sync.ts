@@ -134,6 +134,7 @@ export const useSyncStore = defineStore('sync', () => {
     progress.value = null
 
     let stop: (() => void) | null = null
+    card.pausePresence()
     try {
       stop = await onSyncProgress((update) => {
         progress.value = update
@@ -149,6 +150,7 @@ export const useSyncStore = defineStore('sync', () => {
       return null
     } finally {
       stop?.()
+      card.resumePresence()
       running.value = false
       progress.value = null
     }
