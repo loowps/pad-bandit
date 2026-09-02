@@ -20,6 +20,7 @@
     "test:e2e": "pnpm --filter pad-bandit-ui run test:e2e",
     "test:e2e:ui": "pnpm --filter pad-bandit-ui run test:e2e:ui",
     "lint": "pnpm --filter pad-bandit-ui run lint",
+    "check": "pnpm --filter pad-bandit-ui run check",
     "format": "pnpm --filter pad-bandit-ui run format",
     "tauri": "tauri",
     "tauri:dev": "tauri dev -- --locked",
