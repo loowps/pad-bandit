@@ -187,6 +187,35 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
 
           return { hits, truncated: false }
         },
+        audio_peaks: ({ path, columns }) => {
+          const total = Math.max(1, Number(columns))
+          const sample = given.card?.slots
+            .map((slot) => slot.sample as { path: string; frames: number } | null)
+            .find((each) => each?.path === path)
+
+          let seed = String(path)
+            .split('')
+            .reduce((carried, letter) => (carried * 31 + letter.charCodeAt(0)) % 65521, 7)
+
+          const minMax: number[] = []
+          for (let column = 0; column < total; column++) {
+            seed = (seed * 1103515245 + 12345) % 2147483648
+            const position = column / total
+            const attack = Math.min(1, position * 40)
+            const decay = Math.exp(-4 * position)
+            const amplitude = attack * decay * (0.35 + 0.65 * (seed / 2147483648))
+            minMax.push(-amplitude, amplitude)
+          }
+
+          return {
+            minMax,
+            columns: total,
+            frames: sample?.frames ?? 44100,
+            channels: 2,
+            sampleRate: 44100,
+            exact: true,
+          }
+        },
         card_read: () => {
           if (!given.card) {
             throw new Error('no pad data on that card')
