@@ -5,8 +5,8 @@ interface DirectoryEntry {
   name: string
   path: string
   isDir: boolean
+  isAudio: boolean
   size: number
-  ext: string | null
 }
 
 function toNode(entry: DirectoryEntry): FsNode {
@@ -14,8 +14,8 @@ function toNode(entry: DirectoryEntry): FsNode {
     path: entry.path,
     name: entry.name,
     isDirectory: entry.isDir,
+    isAudio: entry.isAudio,
     size: entry.size,
-    ext: entry.ext,
   }
 }
 

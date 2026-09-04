@@ -14,6 +14,14 @@ use symphonia::core::units::Timestamp;
 
 use crate::error::{Error, Result};
 
+pub const SUPPORTED_EXTENSIONS: &[&str] = &["wav", "aif", "aiff", "mp3", "flac", "ogg"];
+
+pub fn is_supported_extension(extension: &str) -> bool {
+    SUPPORTED_EXTENSIONS
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(extension))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AudioSpec {
     pub channels: u16,
@@ -231,4 +239,51 @@ fn is_end_of_stream(error: &SymphoniaError) -> bool {
 
 fn audio_error(error: SymphoniaError) -> Error {
     Error::Audio(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::testing::write_tone_wav;
+    use tempfile::TempDir;
+
+    #[test]
+    fn every_supported_extension_is_lowercase_and_unique() {
+        let mut seen = SUPPORTED_EXTENSIONS.to_vec();
+        seen.sort_unstable();
+        seen.dedup();
+
+        assert_eq!(seen.len(), SUPPORTED_EXTENSIONS.len());
+        assert!(
+            SUPPORTED_EXTENSIONS
+                .iter()
+                .all(|extension| **extension == extension.to_ascii_lowercase())
+        );
+    }
+
+    #[test]
+    fn extensions_the_decoder_was_not_built_for_are_rejected() {
+        assert!(!is_supported_extension("wma"));
+        assert!(!is_supported_extension("m4a"));
+        assert!(!is_supported_extension("aac"));
+        assert!(!is_supported_extension("txt"));
+        assert!(!is_supported_extension(""));
+    }
+
+    #[test]
+    fn extension_matching_ignores_case() {
+        assert!(is_supported_extension("WAV"));
+        assert!(is_supported_extension("Aiff"));
+        assert!(is_supported_extension("flac"));
+    }
+
+    #[test]
+    fn a_supported_extension_really_opens_in_the_decoder() {
+        let root = TempDir::new().expect("temp dir");
+        let path = root.path().join("tone.wav");
+        write_tone_wav(&path, 440.0, 44_100, 512, 1, 0.5);
+
+        assert!(is_supported_extension("wav"));
+        assert!(AudioSource::open(&path).is_ok());
+    }
 }
