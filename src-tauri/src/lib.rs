@@ -4,6 +4,7 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod fs;
+pub mod index;
 pub mod menu;
 pub mod paths;
 pub mod projects;
@@ -29,6 +30,7 @@ pub fn run() {
             menu::apply(app.handle(), &config)?;
             commands::apply_window_theme(app.handle(), config.theme);
             app.manage(state);
+            commands::reindex_in_background(app.handle().clone(), false);
             app.manage(Player::spawn(commands::PlaybackBridge::new(
                 app.handle().clone(),
             )));
@@ -43,6 +45,9 @@ pub fn run() {
             commands::config_set_theme,
             commands::pick_folder,
             commands::list_dir,
+            commands::index_busy,
+            commands::index_search,
+            commands::index_refresh,
             commands::card_read,
             commands::card_presence,
             commands::sync_preflight,

@@ -13,7 +13,6 @@ pub struct Entry {
     pub name: String,
     pub path: PathBuf,
     pub is_dir: bool,
-    pub size: u64,
     pub is_audio: bool,
 }
 
@@ -34,7 +33,6 @@ pub fn list_dir(scopes: &Scopes, path: &Path) -> Result<Vec<Entry>> {
             path: directory.join(&name),
             name,
             is_dir,
-            size: if is_dir { 0 } else { metadata.len() },
         });
     }
 
@@ -42,7 +40,7 @@ pub fn list_dir(scopes: &Scopes, path: &Path) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-fn is_audio_file(name: &str, is_dir: bool) -> bool {
+pub(crate) fn is_audio_file(name: &str, is_dir: bool) -> bool {
     if is_dir {
         return false;
     }
@@ -165,7 +163,6 @@ mod tests {
         let kick = &entries[0];
         assert_eq!(kick.name, "kick.WAV");
         assert!(kick.is_audio);
-        assert_eq!(kick.size, 4);
         assert!(!kick.is_dir);
         assert!(!entries[2].is_audio);
     }

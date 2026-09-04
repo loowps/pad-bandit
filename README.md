@@ -19,7 +19,10 @@ previews, waveform editing, and incremental sync.
 
 <br />
 
-![Pad Bandit](screenshot.png)
+<picture>
+    <source srcset="screenshot-dark.png" media="(prefers-color-scheme: dark)" />
+    <img src="screenshot.png" alt="Pad Bandit Screenshot" />
+</picture>
 
 #### 🔊 [Bandcamp] / [Soundcloud] / [Apple Music] / [Spotify]
 

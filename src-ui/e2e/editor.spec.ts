@@ -3,6 +3,7 @@ import {
   backendCalls,
   cardWithFilledSlots,
   chooseFromMenu,
+  setEntries,
   stubBackend,
   STUB_PROJECT_PATH,
   type StubEntry,
@@ -16,7 +17,6 @@ function entry(path: string, isDir: boolean, ext: string | null = null): StubEnt
     path,
     isDir,
     isAudio: ext !== null && DECODABLE.includes(ext),
-    size: 1,
   }
 }
 
@@ -207,4 +207,72 @@ test('switching mode from the menu repaints the app and remembers the choice', a
     command: 'config_set_theme',
     args: { theme: 'dark' },
   })
+})
+
+test('searching narrows the tree to matching samples and back again', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+
+  const searchBox = page.getByRole('searchbox', { name: 'Search samples' })
+  await searchBox.fill('snare')
+
+  await expect(page.getByRole('button', { name: /snare\.wav/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeHidden()
+  await expect(page.getByRole('button', { name: 'drums', exact: true })).toBeHidden()
+
+  await page.getByRole('button', { name: 'Clear search' }).click()
+
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'drums', exact: true })).toBeVisible()
+})
+
+test('says so when nothing matches the search', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+
+  await page.getByRole('searchbox', { name: 'Search samples' }).fill('zzzz')
+
+  await expect(page.getByText('No samples match that search.')).toBeVisible()
+})
+
+test('a one-letter search is too short and leaves the tree alone', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+
+  await page.getByRole('searchbox', { name: 'Search samples' }).fill('k')
+
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  expect((await backendCalls(page)).map((call) => call.command)).not.toContain('index_search')
+})
+
+test('rescanning the folders rebuilds the sample index', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Rescan folders' }).click()
+
+  expect((await backendCalls(page)).map((call) => call.command)).toContain('index_refresh')
+})
+
+test('offers no rescan until a folder has been added', async ({ page }) => {
+  await expect(page.getByText('Add a folder of samples to browse it here.')).toBeVisible()
+
+  await expect(page.getByRole('button', { name: 'Rescan folders' })).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Add audio folder' })).toBeVisible()
+})
+
+test('a rescan brings a newly added file into the open tree', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'clap.wav' })).toBeHidden()
+
+  await setEntries(page, '/samples', [
+    entry('/samples/drums', true),
+    entry('/samples/kick.wav', false, 'wav'),
+    entry('/samples/clap.wav', false, 'wav'),
+  ])
+  await page.getByRole('button', { name: 'Rescan folders' }).click()
+
+  await expect(page.getByRole('button', { name: 'clap.wav' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
 })

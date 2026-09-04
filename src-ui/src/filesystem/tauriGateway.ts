@@ -1,12 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { FileSystemGateway, FsNode } from '@/filesystem/types'
+import type { FileSystemGateway, FsNode, SampleSearchResult } from '@/filesystem/types'
 
 interface DirectoryEntry {
   name: string
   path: string
   isDir: boolean
   isAudio: boolean
-  size: number
 }
 
 function toNode(entry: DirectoryEntry): FsNode {
@@ -15,7 +14,6 @@ function toNode(entry: DirectoryEntry): FsNode {
     name: entry.name,
     isDirectory: entry.isDir,
     isAudio: entry.isAudio,
-    size: entry.size,
   }
 }
 
@@ -27,5 +25,17 @@ export class TauriFileSystemGateway implements FileSystemGateway {
   async listChildren(directoryPath: string): Promise<FsNode[]> {
     const entries = await invoke<DirectoryEntry[]>('list_dir', { path: directoryPath })
     return entries.map(toNode)
+  }
+
+  async searchSamples(query: string): Promise<SampleSearchResult> {
+    return await invoke<SampleSearchResult>('index_search', { query })
+  }
+
+  async isIndexing(): Promise<boolean> {
+    return (await invoke<boolean>('index_busy')) ?? false
+  }
+
+  async refreshIndex(): Promise<void> {
+    await invoke('index_refresh')
   }
 }

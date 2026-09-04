@@ -4,7 +4,6 @@ import type { AppConfig, Theme } from '@/config'
 import type { CardPadSettings } from '@/card'
 
 export const PROJECT_VERSION = 1
-export const PROJECT_EXTENSION = 'padbandit'
 
 export interface ProjectDiskRef {
   kind: 'path'
