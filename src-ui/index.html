@@ -16,11 +16,16 @@
       }
 
       .app-loading {
+        --loading-surface: #f4f5f7;
+        --loading-logo-body: #30353d;
+        --loading-pad-empty: #aab3c0;
+        --loading-pad-lit: #fa7d51;
+
         display: flex;
         align-items: center;
         justify-content: center;
         height: 100%;
-        background-color: #f5f5f7;
+        background-color: var(--loading-surface);
       }
 
       .app-loading-logo {
@@ -29,11 +34,11 @@
       }
 
       .app-loading-body {
-        fill: #4c5363;
+        fill: var(--loading-logo-body);
       }
 
       .app-loading-pad {
-        fill: #a9b7c4;
+        fill: var(--loading-pad-empty);
         transform-box: fill-box;
         transform-origin: center;
       }
@@ -45,36 +50,33 @@
 
       @keyframes app-loading-pad {
         0% {
-          fill: #a9b7c4;
+          fill: var(--loading-pad-empty);
           transform: scale(0.88);
         }
 
         4%,
         62% {
-          fill: #f58960;
+          fill: var(--loading-pad-lit);
           transform: scale(1);
         }
 
         72%,
         100% {
-          fill: #a9b7c4;
+          fill: var(--loading-pad-empty);
           transform: scale(0.88);
         }
       }
 
       @media (prefers-color-scheme: dark) {
         .app-loading {
-          background-color: #15171b;
-        }
-
-        .app-loading-body {
-          fill: #5a6274;
+          --loading-surface: #15171b;
+          --loading-logo-body: #e4e7ec;
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
         .app-loading-pad--lit {
-          fill: #f58960;
+          fill: var(--loading-pad-lit);
           animation: none;
         }
       }
