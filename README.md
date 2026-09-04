@@ -57,6 +57,10 @@ Corporation.
 Roland and SP-404SX are trademarks of their respective owners. Pad Bandit is provided as-is and should be used with
 appropriate backups of your samples and SD cards.
 
+## License
+
+[GPL-3.0-or-later](LICENSE)
+
 [Super Pads]: https://github.com/MatthewCallis/super-pads
 [Tauri]: https://tauri.app/
 [Vue.js]: https://vuejs.org/

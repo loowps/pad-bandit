@@ -3,6 +3,7 @@ name = "pad-bandit-tauri"
 version = "0.1.0"
 description = "SP404SX pad and bank editor"
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 [lib]
 name = "pad_bandit_tauri_lib"
