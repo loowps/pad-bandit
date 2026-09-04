@@ -21,11 +21,19 @@
         --loading-pad-empty: #aab3c0;
         --loading-pad-lit: #fa7d51;
 
+        position: fixed;
+        inset: 0;
+        z-index: 10;
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 100%;
         background-color: var(--loading-surface);
+        transition: opacity 200ms ease-out;
+      }
+
+      .app-loading.is-done {
+        pointer-events: none;
+        opacity: 0;
       }
 
       .app-loading-logo {
@@ -38,32 +46,45 @@
       }
 
       .app-loading-pad {
+        --pad-fill: var(--loading-pad-empty);
+
         fill: var(--loading-pad-empty);
         transform-box: fill-box;
         transform-origin: center;
+        animation:
+          app-loading-pad-in 340ms ease-out calc(var(--pad) * 55ms) both,
+          app-loading-pad-fill 340ms ease-out calc(var(--pad) * 55ms) both,
+          app-loading-pad-breathe 2.4s ease-in-out 950ms infinite;
       }
 
       .app-loading-pad--lit {
-        animation: app-loading-pad 2.2s infinite ease-in-out;
-        animation-delay: calc(var(--pad) * 0.09s);
+        --pad-fill: var(--loading-pad-lit);
       }
 
-      @keyframes app-loading-pad {
-        0% {
-          fill: var(--loading-pad-empty);
+      @keyframes app-loading-pad-in {
+        from {
           transform: scale(0.88);
         }
 
-        4%,
-        62% {
-          fill: var(--loading-pad-lit);
+        to {
+          transform: scale(1);
+        }
+      }
+
+      @keyframes app-loading-pad-fill {
+        to {
+          fill: var(--pad-fill);
+        }
+      }
+
+      @keyframes app-loading-pad-breathe {
+        0%,
+        100% {
           transform: scale(1);
         }
 
-        72%,
-        100% {
-          fill: var(--loading-pad-empty);
-          transform: scale(0.88);
+        50% {
+          transform: scale(0.94);
         }
       }
 
@@ -75,8 +96,12 @@
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .app-loading-pad--lit {
-          fill: var(--loading-pad-lit);
+        .app-loading {
+          transition: none;
+        }
+
+        .app-loading-pad {
+          fill: var(--pad-fill);
           animation: none;
         }
       }
@@ -84,33 +109,32 @@
   </head>
   <body>
     <noscript>This editor needs JavaScript to run.</noscript>
-    <div id="app">
-      <div class="app-loading">
-        <svg
-          class="app-loading-logo"
-          viewBox="0 0 39.158 26.56"
-          xmlns="http://www.w3.org/2000/svg"
-          role="img"
-          aria-label="Loading"
-        >
-          <rect class="app-loading-body" x="0" y="0" width="39.158" height="26.56" rx="0.946" />
+    <div id="app"></div>
+    <div id="app-loading" class="app-loading">
+      <svg
+        class="app-loading-logo"
+        viewBox="0 0 39.158 26.56"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+        aria-label="Loading"
+      >
+        <rect class="app-loading-body" x="0" y="0" width="39.158" height="26.56" rx="0.946" />
 
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 0" x="2.849" y="18.421" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad" x="11.810" y="18.421" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 1" x="20.771" y="18.421" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 2" x="29.733" y="18.421" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 0" x="2.849" y="18.421" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad" style="--pad: 1" x="11.810" y="18.421" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 2" x="20.771" y="18.421" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 3" x="29.733" y="18.421" width="6.577" height="5.513" rx="0.636" />
 
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 3" x="2.849" y="10.523" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 4" x="11.810" y="10.523" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 5" x="20.771" y="10.523" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 6" x="29.733" y="10.523" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 4" x="2.849" y="10.523" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 5" x="11.810" y="10.523" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 6" x="20.771" y="10.523" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 7" x="29.733" y="10.523" width="6.577" height="5.513" rx="0.636" />
 
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 7" x="2.849" y="2.626" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 8" x="11.810" y="2.626" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 9" x="20.771" y="2.626" width="6.577" height="5.513" rx="0.636" />
-          <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 10" x="29.733" y="2.626" width="6.577" height="5.513" rx="0.636" />
-        </svg>
-      </div>
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 8" x="2.849" y="2.626" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 9" x="11.810" y="2.626" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 10" x="20.771" y="2.626" width="6.577" height="5.513" rx="0.636" />
+        <rect class="app-loading-pad app-loading-pad--lit" style="--pad: 11" x="29.733" y="2.626" width="6.577" height="5.513" rx="0.636" />
+      </svg>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
