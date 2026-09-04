@@ -1,7 +1,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import { addBrowseFolder, type BrowseFolder, getConfig, removeBrowseFolder } from '@/config'
-import { baseName, type FsNode, getFileSystemGateway, isAudioFile } from '@/filesystem'
+import { baseName, type FsNode, getFileSystemGateway } from '@/filesystem'
 
 export interface VisibleRow {
   node: FsNode
@@ -14,8 +14,8 @@ function rootNode(folder: BrowseFolder): FsNode {
     path: folder.path,
     name: baseName(folder.path),
     isDirectory: true,
+    isAudio: false,
     size: 0,
-    ext: null,
   }
 }
 
@@ -77,7 +77,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       const children = await getFileSystemGateway().listChildren(directoryPath)
       childrenByPath.value = {
         ...childrenByPath.value,
-        [directoryPath]: children.filter((child) => child.isDirectory || isAudioFile(child)),
+        [directoryPath]: children.filter((child) => child.isDirectory || child.isAudio),
       }
     } catch (cause) {
       error.value = messageOf(cause, 'Could not read that folder.')

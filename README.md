@@ -34,6 +34,12 @@ previews, waveform editing, and incremental sync.
 - 🔄 Incremental sync — Only modified pads are synchronized instead of rewriting the entire bank.
 - 💾 Projects — Save and restore complete pad-bank setups for easy recall and reuse.
 
+## Audio Formats
+
+Readable sources: `wav` · `aif` / `aiff` · `mp3` · `flac` · `ogg`
+
+Everything is converted to the card's own WAV format on sync.
+
 ## Tech Stack
 
 - [Tauri] — Desktop application

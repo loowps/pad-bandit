@@ -21,7 +21,15 @@ thiserror = "2"
 cpal = "0.18.2"
 rubato = "5.0.0"
 rtrb = "0.4.0"
-symphonia = { version = "0.6.1", features = ["wav", "aiff", "mp3", "flac", "pcm"] }
+symphonia = { version = "0.6.1", features = [
+    "wav",
+    "aiff",
+    "mp3",
+    "flac",
+    "pcm",
+    "ogg",
+    "vorbis",
+] }
 
 [dev-dependencies]
 tempfile = "3"

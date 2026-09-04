@@ -14,12 +14,20 @@ interface DirectoryEntry {
   name: string
   path: string
   isDir: boolean
+  isAudio: boolean
   size: number
-  ext: string | null
 }
 
+const DECODABLE = ['wav', 'aif', 'aiff', 'mp3', 'flac', 'ogg']
+
 function entry(path: string, isDir: boolean, ext: string | null = null): DirectoryEntry {
-  return { name: path.split('/').pop() ?? path, path, isDir, size: 1, ext }
+  return {
+    name: path.split('/').pop() ?? path,
+    path,
+    isDir,
+    isAudio: ext !== null && DECODABLE.includes(ext),
+    size: 1,
+  }
 }
 
 const tree: Record<string, DirectoryEntry[]> = {
@@ -27,6 +35,7 @@ const tree: Record<string, DirectoryEntry[]> = {
     entry('/samples/drums', true),
     entry('/samples/kick.wav', false, 'wav'),
     entry('/samples/notes.txt', false, 'txt'),
+    entry('/samples/voice.m4a', false, 'm4a'),
   ],
   '/samples/drums': [entry('/samples/drums/snare.aif', false, 'aif')],
 }
@@ -100,7 +109,7 @@ describe('fileBrowser store', () => {
     expect(browser.roots.map((root) => root.path)).toEqual(['/samples'])
   })
 
-  it('keeps only directories and audio files', async () => {
+  it('keeps only directories and files the backend reports as decodable audio', async () => {
     const browser = useFileBrowserStore()
 
     await browser.addRoot()

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::audio::decode::is_supported_extension;
 use crate::error::Result;
 use crate::paths::Scopes;
 
@@ -13,7 +14,7 @@ pub struct Entry {
     pub path: PathBuf,
     pub is_dir: bool,
     pub size: u64,
-    pub ext: Option<String>,
+    pub is_audio: bool,
 }
 
 pub fn list_dir(scopes: &Scopes, path: &Path) -> Result<Vec<Entry>> {
@@ -29,7 +30,7 @@ pub fn list_dir(scopes: &Scopes, path: &Path) -> Result<Vec<Entry>> {
         let is_dir = metadata.is_dir();
 
         entries.push(Entry {
-            ext: extension_of(&name, is_dir),
+            is_audio: is_audio_file(&name, is_dir),
             path: directory.join(&name),
             name,
             is_dir,
@@ -41,13 +42,14 @@ pub fn list_dir(scopes: &Scopes, path: &Path) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-fn extension_of(name: &str, is_dir: bool) -> Option<String> {
+fn is_audio_file(name: &str, is_dir: bool) -> bool {
     if is_dir {
-        return None;
+        return false;
     }
     Path::new(name)
         .extension()
-        .map(|ext| ext.to_string_lossy().to_lowercase())
+        .and_then(|ext| ext.to_str())
+        .is_some_and(is_supported_extension)
 }
 
 fn compare_entries(first: &Entry, second: &Entry) -> Ordering {
@@ -162,10 +164,42 @@ mod tests {
         assert_eq!(entries.len(), 3);
         let kick = &entries[0];
         assert_eq!(kick.name, "kick.WAV");
-        assert_eq!(kick.ext.as_deref(), Some("wav"));
+        assert!(kick.is_audio);
         assert_eq!(kick.size, 4);
         assert!(!kick.is_dir);
-        assert_eq!(entries[2].ext, None);
+        assert!(!entries[2].is_audio);
+    }
+
+    #[test]
+    fn only_decodable_extensions_are_marked_as_audio() {
+        let f = fixture();
+        for name in [
+            "kick.WAV",
+            "snare.aif",
+            "break.aiff",
+            "loop.mp3",
+            "pad.flac",
+            "voice.wma",
+            "song.m4a",
+            "voice.ogg",
+            "notes.txt",
+            "readme",
+        ] {
+            write(&f.browse.join(name), b"x");
+        }
+        std::fs::create_dir(f.browse.join("drums")).expect("create dir");
+
+        let audio: Vec<String> = list_dir(&f.scopes, &f.browse)
+            .expect("list")
+            .into_iter()
+            .filter(|entry| entry.is_audio)
+            .map(|entry| entry.name)
+            .collect();
+
+        assert_eq!(
+            audio,
+            ["break.aiff", "kick.WAV", "loop.mp3", "pad.flac", "snare.aif", "voice.ogg"]
+        );
     }
 
     #[test]

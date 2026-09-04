@@ -8,8 +8,16 @@ import {
   type StubEntry,
 } from './stubBackend'
 
+const DECODABLE = ['wav', 'aif', 'aiff', 'mp3', 'flac', 'ogg']
+
 function entry(path: string, isDir: boolean, ext: string | null = null): StubEntry {
-  return { name: path.split('/').pop() ?? path, path, isDir, size: 1, ext }
+  return {
+    name: path.split('/').pop() ?? path,
+    path,
+    isDir,
+    isAudio: ext !== null && DECODABLE.includes(ext),
+    size: 1,
+  }
 }
 
 const samples: Record<string, StubEntry[]> = {

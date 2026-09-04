@@ -4,8 +4,8 @@ export interface StubEntry {
   name: string
   path: string
   isDir: boolean
+  isAudio: boolean
   size: number
-  ext: string | null
 }
 
 export interface StubSlot {
