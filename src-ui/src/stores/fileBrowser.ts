@@ -1,12 +1,24 @@
 import { computed, ref, shallowRef } from 'vue'
+import { watchDebounced } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { addBrowseFolder, type BrowseFolder, getConfig, removeBrowseFolder } from '@/config'
-import { baseName, type FsNode, getFileSystemGateway } from '@/filesystem'
+import {
+  baseName,
+  type FsNode,
+  getFileSystemGateway,
+  hitNode,
+  isSearchable,
+  onIndexChanged,
+  type SampleHit,
+} from '@/filesystem'
+
+const SEARCH_DEBOUNCE_MS = 200
 
 export interface VisibleRow {
   node: FsNode
   depth: number
   rootId: string | null
+  location: string | null
 }
 
 function rootNode(folder: BrowseFolder): FsNode {
@@ -15,8 +27,11 @@ function rootNode(folder: BrowseFolder): FsNode {
     name: baseName(folder.path),
     isDirectory: true,
     isAudio: false,
-    size: 0,
   }
+}
+
+function browsable(children: FsNode[]): FsNode[] {
+  return children.filter((child) => child.isDirectory || child.isAudio)
 }
 
 function messageOf(cause: unknown, fallback: string): string {
@@ -35,13 +50,21 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
   const previewStartFrame = ref<number | null>(null)
   const error = ref<string | null>(null)
 
+  const query = ref('')
+  const hits = shallowRef<SampleHit[]>([])
+  const truncated = ref(false)
+  const searching = ref(false)
+  const isIndexing = ref(false)
+
   const roots = computed<FsNode[]>(() => folders.value.map(rootNode))
 
-  const visibleRows = computed<VisibleRow[]>(() => {
+  const isFiltering = computed(() => isSearchable(query.value))
+
+  const treeRows = computed<VisibleRow[]>(() => {
     const rows: VisibleRow[] = []
 
     const collect = (node: FsNode, depth: number, rootId: string | null): void => {
-      rows.push({ node, depth, rootId })
+      rows.push({ node, depth, rootId, location: null })
       if (node.isDirectory && expandedPaths.value.has(node.path)) {
         for (const child of childrenByPath.value[node.path] ?? []) {
           collect(child, depth + 1, null)
@@ -54,6 +77,19 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     }
     return rows
   })
+
+  const resultRows = computed<VisibleRow[]>(() =>
+    hits.value.map((hit) => ({
+      node: hitNode(hit),
+      depth: 0,
+      rootId: null,
+      location: hit.location,
+    })),
+  )
+
+  const visibleRows = computed<VisibleRow[]>(() =>
+    isFiltering.value ? resultRows.value : treeRows.value,
+  )
 
   function childrenOf(directoryPath: string): FsNode[] {
     return childrenByPath.value[directoryPath] ?? []
@@ -77,7 +113,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       const children = await getFileSystemGateway().listChildren(directoryPath)
       childrenByPath.value = {
         ...childrenByPath.value,
-        [directoryPath]: children.filter((child) => child.isDirectory || child.isAudio),
+        [directoryPath]: browsable(children),
       }
     } catch (cause) {
       error.value = messageOf(cause, 'Could not read that folder.')
@@ -95,6 +131,109 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     await loadChildren(directoryPath)
   }
 
+  let latestSearch = 0
+
+  async function runSearch(): Promise<void> {
+    if (!isSearchable(query.value)) {
+      hits.value = []
+      truncated.value = false
+      searching.value = false
+      return
+    }
+
+    const ticket = ++latestSearch
+    searching.value = true
+    try {
+      const result = await getFileSystemGateway().searchSamples(query.value.trim())
+      if (ticket !== latestSearch) {
+        return
+      }
+      hits.value = result.hits
+      truncated.value = result.truncated
+    } catch (cause) {
+      if (ticket === latestSearch) {
+        hits.value = []
+        truncated.value = false
+        error.value = messageOf(cause, 'Could not search those folders.')
+      }
+    } finally {
+      if (ticket === latestSearch) {
+        searching.value = false
+      }
+    }
+  }
+
+  function setQuery(next: string): void {
+    query.value = next
+    if (!isSearchable(next)) {
+      latestSearch += 1
+      hits.value = []
+      truncated.value = false
+      searching.value = false
+    }
+  }
+
+  function clearQuery(): void {
+    setQuery('')
+  }
+
+  watchDebounced(query, () => void runSearch(), { debounce: SEARCH_DEBOUNCE_MS })
+
+  async function readIndexState(): Promise<void> {
+    try {
+      isIndexing.value = await getFileSystemGateway().isIndexing()
+    } catch {
+      isIndexing.value = false
+    }
+  }
+
+  async function reloadOpenFolders(): Promise<void> {
+    const gateway = getFileSystemGateway()
+    const reread: Record<string, FsNode[]> = {}
+    const unreadable: string[] = []
+
+    for (const directoryPath of expandedPaths.value) {
+      try {
+        reread[directoryPath] = browsable(await gateway.listChildren(directoryPath))
+      } catch {
+        unreadable.push(directoryPath)
+      }
+    }
+
+    for (const directoryPath of unreadable) {
+      expandedPaths.value.delete(directoryPath)
+    }
+
+    childrenByPath.value = reread
+    if (selectedFilePath.value && !isStillListed(selectedFilePath.value, reread)) {
+      selectFile(null)
+    }
+  }
+
+  function isStillListed(filePath: string, listings: Record<string, FsNode[]>): boolean {
+    return Object.values(listings).some((children) =>
+      children.some((child) => child.path === filePath),
+    )
+  }
+
+  async function refreshIndex(): Promise<void> {
+    if (isIndexing.value) {
+      return
+    }
+
+    error.value = null
+    isIndexing.value = true
+    try {
+      await getFileSystemGateway().refreshIndex()
+    } catch (cause) {
+      isIndexing.value = false
+      error.value = messageOf(cause, 'Could not rebuild the sample index.')
+      return
+    }
+
+    await reloadOpenFolders()
+  }
+
   async function restore(): Promise<void> {
     error.value = null
     try {
@@ -102,6 +241,12 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     } catch (cause) {
       error.value = messageOf(cause, 'Could not read the saved folders.')
     }
+
+    await readIndexState()
+    await onIndexChanged(() => {
+      void readIndexState()
+      void runSearch()
+    })
   }
 
   async function addRoot(): Promise<void> {
@@ -173,6 +318,11 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     previewStartFrame,
     error,
     visibleRows,
+    query,
+    truncated,
+    searching,
+    isFiltering,
+    isIndexing,
     childrenOf,
     isExpanded,
     isLoading,
@@ -182,5 +332,8 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     removeRoot,
     selectFile,
     setPreviewStart,
+    setQuery,
+    refreshIndex,
+    clearQuery,
   }
 })

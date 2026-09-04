@@ -4,12 +4,14 @@ use std::sync::{Mutex, MutexGuard, TryLockError};
 use crate::card::CardState;
 use crate::config::{Config, ConfigStore, Theme};
 use crate::error::{Error, Result};
+use crate::index::{Indexes, SearchOutcome};
 use crate::paths::{FileGrants, Scopes};
 use crate::projects::{Journal, Project, ProjectStore, StoredProject};
 use crate::sync::{Preflight, SyncPlan};
 
 pub struct AppState {
     inner: Mutex<Inner>,
+    indexes: Mutex<Indexes>,
     syncing: Mutex<()>,
     cancellation: crate::sync::apply::Cancellation,
 }
@@ -43,6 +45,7 @@ impl AppState {
 
         Ok(Self {
             inner: Mutex::new(Inner { store, scopes, grants }),
+            indexes: Mutex::new(Indexes::default()),
             syncing: Mutex::new(()),
             cancellation: crate::sync::apply::Cancellation::default(),
         })
@@ -107,10 +110,56 @@ impl AppState {
     }
 
     pub fn remove_browse_folder(&self, id: &str) -> Result<Config> {
-        let mut inner = self.lock();
-        let folder = inner.store.remove_folder(id)?;
-        inner.scopes.remove_read_root(&folder.path);
-        Ok(inner.store.config().clone())
+        let (config, removed) = {
+            let mut inner = self.lock();
+            let folder = inner.store.remove_folder(id)?;
+            inner.scopes.remove_read_root(&folder.path);
+            (inner.store.config().clone(), folder.path)
+        };
+        self.lock_indexes().forget(&removed);
+        Ok(config)
+    }
+
+    pub fn browse_roots(&self) -> Vec<PathBuf> {
+        self.lock()
+            .store
+            .config()
+            .browse_folders
+            .iter()
+            .map(|folder| folder.path.clone())
+            .collect()
+    }
+
+    pub fn is_indexing(&self) -> bool {
+        self.lock_indexes().is_building()
+    }
+
+    pub fn search_samples(&self, query: &str, limit: usize) -> SearchOutcome {
+        self.lock_indexes().search(query, limit)
+    }
+
+    pub fn reindex(&self, root: &Path) {
+        let scopes = self.scopes();
+        self.lock_indexes().mark_building(root);
+
+        match crate::index::build(&scopes, root) {
+            Ok(built) => self.lock_indexes().store(root, built),
+            Err(error) => {
+                eprintln!("could not index {}: {error}", root.display());
+                self.lock_indexes().mark_failed(root);
+            }
+        }
+    }
+
+    pub fn reindex_all(&self, force: bool) {
+        let roots = self.browse_roots();
+        self.lock_indexes().retain_roots(&roots);
+
+        for root in &roots {
+            if force || !self.lock_indexes().is_ready(root) {
+                self.reindex(root);
+            }
+        }
     }
 
     pub fn set_card_path(&self, path: Option<&Path>) -> Result<Config> {
@@ -240,6 +289,12 @@ impl AppState {
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_indexes(&self) -> MutexGuard<'_, Indexes> {
+        self.indexes
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }

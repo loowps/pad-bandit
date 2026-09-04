@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::audio::encode;
-use crate::card::{LoadedCard, PadEdit, PAD_COUNT, sample_file_name};
+use crate::card::{LoadedCard, PadEdit, PAD_COUNT};
 use crate::error::Result;
 use crate::paths::Scopes;
 
@@ -210,10 +210,6 @@ fn occupied_sizes(card: &LoadedCard) -> BTreeMap<u8, u64> {
         .collect()
 }
 
-pub fn destination_of(card_root: &Path, slot: u8) -> PathBuf {
-    crate::card::sample_directory(card_root).join(sample_file_name(slot))
-}
-
 pub fn free_space(path: &Path) -> Result<u64> {
     platform::free_space(path)
 }
@@ -276,7 +272,7 @@ mod platform {
 mod tests {
     use super::*;
     use crate::audio::testing;
-    use crate::card::{PadSettings, TempoMode, read_card};
+    use crate::card::{PadSettings, TempoMode, read_card, sample_file_name};
     use tempfile::TempDir;
 
     struct Fixture {

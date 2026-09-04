@@ -10,6 +10,7 @@ use crate::card::{CardPresence, CardState};
 use crate::config::{Config, Theme};
 use crate::error::Result;
 use crate::fs::Entry;
+use crate::index::{self, SearchOutcome};
 use crate::projects::{Journal, PROJECT_EXTENSION, Project, StoredProject};
 use crate::state::{AppState, SyncResult};
 use crate::sync::{Preflight, SyncPlan};
@@ -21,8 +22,14 @@ pub fn config_get(state: State<'_, AppState>) -> Config {
 }
 
 #[tauri::command]
-pub fn config_add_folder(state: State<'_, AppState>, path: PathBuf) -> Result<Config> {
-    state.add_browse_folder(&path)
+pub fn config_add_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: PathBuf,
+) -> Result<Config> {
+    let config = state.add_browse_folder(&path)?;
+    reindex_in_background(app, false);
+    Ok(config)
 }
 
 #[tauri::command]
@@ -333,4 +340,27 @@ pub async fn sync_apply(app: AppHandle, plan: SyncPlan) -> Result<SyncResult> {
 #[tauri::command]
 pub fn sync_cancel(state: State<'_, AppState>) {
     state.cancel_sync();
+}
+
+#[tauri::command]
+pub fn index_busy(state: State<'_, AppState>) -> bool {
+    state.is_indexing()
+}
+
+#[tauri::command]
+pub fn index_search(state: State<'_, AppState>, query: String) -> SearchOutcome {
+    state.search_samples(&query, index::MAX_RESULTS)
+}
+
+#[tauri::command]
+pub fn index_refresh(app: AppHandle) {
+    reindex_in_background(app, true);
+}
+
+pub fn reindex_in_background(app: AppHandle, force: bool) {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = app.emit("index:changed", ());
+        app.state::<AppState>().reindex_all(force);
+        let _ = app.emit("index:changed", ());
+    });
 }

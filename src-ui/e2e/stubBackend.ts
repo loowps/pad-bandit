@@ -5,7 +5,6 @@ export interface StubEntry {
   path: string
   isDir: boolean
   isAudio: boolean
-  size: number
 }
 
 export interface StubSlot {
@@ -37,11 +36,16 @@ export type StubMenuAction =
 declare global {
   interface Window {
     __MENU__: (action: StubMenuAction) => void
+    __SET_ENTRIES__: (path: string, items: StubEntry[]) => void
   }
 }
 
 export function chooseFromMenu(page: Page, action: StubMenuAction): Promise<void> {
   return page.evaluate((chosen) => window.__MENU__(chosen), action)
+}
+
+export function setEntries(page: Page, path: string, items: StubEntry[]): Promise<void> {
+  return page.evaluate((given) => window.__SET_ENTRIES__(given.path, given.items), { path, items })
 }
 
 export function cardWithFilledSlots(
@@ -129,6 +133,13 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
       })
 
+      Object.defineProperty(window, '__SET_ENTRIES__', {
+        configurable: true,
+        value: (path: string, items: unknown) => {
+          given.entries[path] = items as (typeof given.entries)[string]
+        },
+      })
+
       const handlers: Record<string, (args: Record<string, never>) => unknown> = {
         config_get: () => config,
         config_add_folder: ({ path }) => {
@@ -150,6 +161,61 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
         pick_folder: () => given.pickedFolder,
         list_dir: ({ path }) => given.entries[path] ?? [],
+        index_busy: () => false,
+        index_refresh: () => null,
+        index_search: ({ query }) => {
+          const needle = String(query).trim().toLowerCase()
+          const relative = (parent: string) => {
+            const root = config.browseFolders.find((folder) => parent.startsWith(folder.path))
+            return root ? parent.slice(root.path.length).replace(/^[\\/]/, '') : parent
+          }
+
+          const hits = Object.entries(given.entries).flatMap(([parent, items]) =>
+            items
+              .filter((item) => !item.isDir && item.isAudio)
+              .filter(
+                (item) =>
+                  item.name.toLowerCase().includes(needle) ||
+                  relative(parent).toLowerCase().includes(needle),
+              )
+              .map((item) => ({
+                path: item.path,
+                name: item.name,
+                location: relative(parent),
+              })),
+          )
+
+          return { hits, truncated: false }
+        },
+        audio_peaks: ({ path, columns }) => {
+          const total = Math.max(1, Number(columns))
+          const sample = given.card?.slots
+            .map((slot) => slot.sample as { path: string; frames: number } | null)
+            .find((each) => each?.path === path)
+
+          let seed = String(path)
+            .split('')
+            .reduce((carried, letter) => (carried * 31 + letter.charCodeAt(0)) % 65521, 7)
+
+          const minMax: number[] = []
+          for (let column = 0; column < total; column++) {
+            seed = (seed * 1103515245 + 12345) % 2147483648
+            const position = column / total
+            const attack = Math.min(1, position * 40)
+            const decay = Math.exp(-4 * position)
+            const amplitude = attack * decay * (0.35 + 0.65 * (seed / 2147483648))
+            minMax.push(-amplitude, amplitude)
+          }
+
+          return {
+            minMax,
+            columns: total,
+            frames: sample?.frames ?? 44100,
+            channels: 2,
+            sampleRate: 44100,
+            exact: true,
+          }
+        },
         card_read: () => {
           if (!given.card) {
             throw new Error('no pad data on that card')
@@ -159,7 +225,10 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         project_pick_to_save: () => given.pickedProject,
         project_pick_to_open: () => given.pickedProject,
         project_save: ({ path, project }) => {
-          const name = String(path).split(/[\\/]/).pop()!.replace(/\.[^.]+$/, '')
+          const name = String(path)
+            .split(/[\\/]/)
+            .pop()!
+            .replace(/\.[^.]+$/, '')
           files[path] = { ...(project as StubProject), name, savedAt: 1 }
           recent = [path, ...recent.filter((known) => known !== path)]
           journal = null
@@ -246,7 +315,8 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
 
 export function backendCalls(page: Page): Promise<{ command: string; args: unknown }[]> {
   return page.evaluate(
-    () => (window as unknown as { __BACKEND_CALLS__: { command: string; args: unknown }[] })
-      .__BACKEND_CALLS__,
+    () =>
+      (window as unknown as { __BACKEND_CALLS__: { command: string; args: unknown }[] })
+        .__BACKEND_CALLS__,
   )
 }
