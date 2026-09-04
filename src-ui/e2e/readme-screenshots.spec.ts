@@ -132,6 +132,24 @@ test('captures the README screenshots', async ({ page }) => {
 
   await page.goto('/')
 
+  await page.addStyleTag({
+    content: `
+      #__vue-devtools-container__,
+      #vue-inspector-container {
+        display: none;
+      }
+
+      html::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: 99;
+        pointer-events: none;
+        border: 1px solid var(--panel-border-strong);
+      }
+    `,
+  })
+
   await page.getByRole('button', { name: 'Samples', exact: true }).click()
   await page.getByRole('button', { name: 'Drums' }).click()
   await page.getByRole('button', { name: 'one shots' }).click()
