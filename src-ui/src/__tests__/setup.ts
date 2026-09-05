@@ -1,3 +1,13 @@
+import { afterEach } from 'vitest'
+import { getActivePinia } from 'pinia'
+import { useNoticesStore } from '@/stores/notices'
+
+afterEach(() => {
+  if (getActivePinia()) {
+    useNoticesStore().clear()
+  }
+})
+
 const context2d = {
   clearRect: () => undefined,
   fillRect: () => undefined,
