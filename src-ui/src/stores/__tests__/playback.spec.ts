@@ -12,6 +12,11 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn<() => Promise<() => void>>(() => Promise.resolve(() => {})),
 }))
 
+vi.mock('@vueuse/core', async () => {
+  const actual = await vi.importActual<typeof import('@vueuse/core')>('@vueuse/core')
+  return { ...actual, useRafFn: () => ({ resume: () => {}, pause: () => {} }) }
+})
+
 const invokeMock = vi.mocked(invoke)
 
 function commandsSent(): string[] {
