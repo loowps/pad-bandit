@@ -153,6 +153,39 @@ test('shows what changed on a pad and discards it again', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Selected pad' })).toContainText('sample0.wav')
 })
 
+test('dragging one bank onto another trades their pads', async ({ page }) => {
+  await page.getByRole('button', { name: 'Choose card folder…' }).click()
+  await expect(page.getByText('Card folder recognised')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Pad A1', exact: true }).click()
+
+  await page
+    .getByRole('heading', { name: 'Bank A' })
+    .dragTo(page.getByRole('heading', { name: 'Bank B' }))
+
+  await expect(page.getByRole('button', { name: 'Pad B1, moved from another pad' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pad A1, sample removed' })).toBeVisible()
+
+  const toolbar = page.getByRole('region', { name: 'Selected pad' })
+  await expect(toolbar).toContainText('B1')
+  await expect(toolbar).toContainText('sample0.wav')
+})
+
+test('dragging a bank back where it came from leaves nothing to sync', async ({ page }) => {
+  await page.getByRole('button', { name: 'Choose card folder…' }).click()
+  await expect(page.getByText('Card folder recognised')).toBeVisible()
+
+  const bank = (name: string) => page.getByRole('heading', { name: `Bank ${name}` })
+
+  await bank('A').dragTo(bank('C'))
+  await expect(page.getByRole('button', { name: 'Pad C1, moved from another pad' })).toBeVisible()
+
+  await bank('C').dragTo(bank('A'))
+
+  await expect(page.getByRole('button', { name: 'Pad C1, moved from another pad' })).toBeHidden()
+  await expect(page.getByText('to remove')).toBeHidden()
+})
+
 test('the sync preview lists the pending changes and lets rows be deselected', async ({ page }) => {
   await page.getByRole('button', { name: 'Choose card folder…' }).click()
   await expect(page.getByText('Card folder recognised')).toBeVisible()

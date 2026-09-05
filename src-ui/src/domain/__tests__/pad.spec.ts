@@ -5,6 +5,7 @@ import {
   diskAudio,
   numberInBank,
   PAD_COUNT,
+  padIdAfterBankSwap,
   padIdForSlot,
 } from '@/domain/pad'
 
@@ -25,6 +26,17 @@ describe('pad addressing', () => {
     expect(numberInBank(0)).toBe(1)
     expect(numberInBank(11)).toBe(12)
     expect(numberInBank(12)).toBe(1)
+  })
+
+  it('follows a pad to the bank it was swapped into, from either side', () => {
+    expect(padIdAfterBankSwap(2, 'A', 'C')).toBe('C3')
+    expect(padIdAfterBankSwap(26, 'A', 'C')).toBe('A3')
+    expect(padIdAfterBankSwap(11, 'A', 'J')).toBe('J12')
+  })
+
+  it('leaves a pad outside both banks where it is', () => {
+    expect(padIdAfterBankSwap(14, 'A', 'C')).toBe('B3')
+    expect(padIdAfterBankSwap(2, 'A', 'A')).toBe('A3')
   })
 })
 

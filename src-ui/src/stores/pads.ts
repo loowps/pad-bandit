@@ -164,32 +164,47 @@ export const usePadsStore = defineStore('pads', () => {
     adoptSnapshot()
   }
 
+  function intentAfterExchange(pad: Pad, had: AudioRef | null): void {
+    if (pad.audio) {
+      intentById.value[pad.id] = sampleIntent(pad.audio)
+    } else if (had) {
+      intentById.value[pad.id] = clearIntent()
+    }
+  }
+
+  function exchange(first: Pad, second: Pad): void {
+    const [hadFirst, hadSecond] = [first.audio, second.audio]
+    ;[first.audio, second.audio] = [hadSecond, hadFirst]
+    ;[first.sample, second.sample] = [second.sample, first.sample]
+    ;[first.settings, second.settings] = [second.settings, first.settings]
+    intentAfterExchange(first, hadFirst)
+    intentAfterExchange(second, hadSecond)
+  }
+
   function swapPads(first: PadId, second: PadId): void {
     const source = byId.value[first]
     const target = byId.value[second]
-    const onlyAudio = source?.audio ?? target?.audio
-    if (!source || !target || source === target || !onlyAudio) {
+    if (!source || !target || source === target || !(source.audio ?? target.audio)) {
+      return
+    }
+    exchange(source, target)
+  }
+
+  function swapBanks(first: BankName, second: BankName): void {
+    if (first === second) {
       return
     }
 
-    if (source.audio && target.audio) {
-      ;[source.audio, target.audio] = [target.audio, source.audio]
-      ;[source.sample, target.sample] = [target.sample, source.sample]
-      ;[source.settings, target.settings] = [target.settings, source.settings]
-      intentById.value[source.id] = sampleIntent(source.audio)
-      intentById.value[target.id] = sampleIntent(target.audio)
-      return
-    }
+    const from = BANK_NAMES.indexOf(first) * PADS_PER_BANK
+    const to = BANK_NAMES.indexOf(second) * PADS_PER_BANK
 
-    const [filled, empty] = source.audio ? [source, target] : [target, source]
-    empty.audio = filled.audio
-    empty.sample = filled.sample
-    empty.settings = filled.settings
-    filled.audio = null
-    filled.sample = null
-    filled.settings = createDefaultSettings()
-    intentById.value[empty.id] = sampleIntent(onlyAudio)
-    intentById.value[filled.id] = clearIntent()
+    for (let number = 0; number < PADS_PER_BANK; number++) {
+      const source = byId.value[padIdForSlot(from + number)]
+      const target = byId.value[padIdForSlot(to + number)]
+      if (source && target) {
+        exchange(source, target)
+      }
+    }
   }
 
   function adoptSnapshot(): void {
@@ -229,6 +244,7 @@ export const usePadsStore = defineStore('pads', () => {
     loadFromCard,
     applyProject,
     swapPads,
+    swapBanks,
     adoptSnapshot,
     resetCard,
   }

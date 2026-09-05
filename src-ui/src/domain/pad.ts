@@ -57,6 +57,14 @@ export function numberInBank(slot: number): number {
   return (slot % PADS_PER_BANK) + 1
 }
 
+export function padIdAfterBankSwap(slot: number, first: BankName, second: BankName): PadId {
+  const bank = bankOfSlot(slot)
+  if (bank !== first && bank !== second) {
+    return padIdForSlot(slot)
+  }
+  return `${bank === first ? second : first}${numberInBank(slot)}`
+}
+
 export function padIdForSlot(slot: number): PadId {
   return `${bankOfSlot(slot)}${numberInBank(slot)}`
 }

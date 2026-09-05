@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePadsStore } from '@/stores/pads'
-import { createDefaultSettings, diskAudio, PAD_COUNT } from '@/domain/pad'
+import { diskAudio, PAD_COUNT } from '@/domain/pad'
 import type { CardSlot, CardState } from '@/card'
 
 function slot(index: number, fileName: string | null): CardSlot {
@@ -113,7 +113,8 @@ describe('per-slot intent', () => {
 
     expect(pads.changeFor('B1')).toMatchObject({ status: 'moved', fromSlot: 26 })
     expect(pads.changeFor('C3')).toMatchObject({ status: 'removed' })
-    expect(pads.padById('C3')?.settings).toEqual(createDefaultSettings())
+    expect(pads.padById('C3')?.audio).toBeNull()
+    expect(pads.padById('C3')?.settings).toEqual(pads.cardPads['B1']?.settings)
   })
 
   it('does not leak the settings of an empty pad onto the sample it receives', () => {
