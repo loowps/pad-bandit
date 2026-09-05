@@ -31,7 +31,7 @@ previews, waveform editing, and incremental sync.
 ## Features
 
 - 🎛️ Pad management — Move and swap pads, or whole banks, using drag & drop.
-- 📁 File browser — Choose your own root folders, preview audio files, and drag them directly onto pads.
+- 📁 File browser — Choose your own root folders, preview audio files, and drag them directly onto pads. Select several to fill consecutive pads at once.
 - 🌊 Waveform editor — Visually adjust the start and end points of the selected pad.
 - ⚙️ Pad settings — Edit parameters such as Lo-Fi, Gate, Loop, and Volume.
 - 🔄 Incremental sync — Only modified pads are synchronized instead of rewriting the entire bank.
