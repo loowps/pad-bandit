@@ -4,6 +4,7 @@ import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
 import { useProjectsStore } from '@/stores/projects'
 import { useSyncStore } from '@/stores/sync'
+import { useUiStore } from '@/stores/ui'
 import type { PadChangeStatus } from '@/domain/plan'
 
 const WORK_LABELS: Record<PadChangeStatus, string> = {
@@ -20,6 +21,7 @@ const card = useCardStore()
 const pads = usePadsStore()
 const projects = useProjectsStore()
 const sync = useSyncStore()
+const ui = useUiStore()
 
 const work = computed(() =>
   ORDERED_STATUSES.map((status) => ({
@@ -51,6 +53,16 @@ const fillLabel = computed(() => {
   return missed > 0
     ? `${verb} ${outcome.filled} of ${outcome.requested} pads — ${missed} did not fit`
     : `${verb} ${outcome.filled} pads`
+})
+
+const refusalLabel = computed(() => {
+  const refused = ui.refusedDrop
+  if (!refused) {
+    return ''
+  }
+  const [only] = refused.names
+  const what = refused.names.length === 1 ? only : `${refused.names.length} files`
+  return `${what} could not be decoded — ${refused.reason}`
 })
 
 const presenceLabel = computed(() => {
@@ -109,6 +121,18 @@ const presenceLabel = computed(() => {
       </li>
     </ul>
 
+    <div v-if="ui.refusedDrop" class="refusal">
+      <span class="reason">{{ refusalLabel }}</span>
+      <button
+        type="button"
+        class="dismiss"
+        aria-label="Dismiss decoding failure"
+        @click="ui.forgetRefusal()"
+      >
+        ✕
+      </button>
+    </div>
+
     <div v-if="pads.lastFill" class="fill">
       <span>{{ fillLabel }}</span>
       <button type="button" class="undo" @click="pads.undoFill()">Undo</button>
@@ -160,7 +184,8 @@ const presenceLabel = computed(() => {
   border-top: 1px solid var(--panel-border);
 }
 
-.fill {
+.fill,
+.refusal {
   display: flex;
   flex: 0 0 auto;
   gap: 0.375rem;
@@ -170,6 +195,13 @@ const presenceLabel = computed(() => {
   color: var(--text-muted);
   border-left: 1px solid var(--panel-border);
   white-space: nowrap;
+}
+
+.reason {
+  overflow: hidden;
+  max-width: 28rem;
+  color: var(--status-danger);
+  text-overflow: ellipsis;
 }
 
 .undo {

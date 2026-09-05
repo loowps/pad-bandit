@@ -5,6 +5,7 @@ import BottomBar from '@/components/BottomBar.vue'
 import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
 import { useSyncStore } from '@/stores/sync'
+import { useUiStore } from '@/stores/ui'
 import { diskAudio, PAD_COUNT } from '@/domain/pad'
 import type { CardState } from '@/card'
 
@@ -115,6 +116,38 @@ describe('BottomBar after a fill', () => {
 
     expect(wrapper.find('.fill').exists()).toBe(false)
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
+  })
+})
+
+describe('BottomBar after a refused drop', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('names the file the decoder turned down and why', async () => {
+    const ui = useUiStore()
+    const wrapper = mount(BottomBar)
+
+    ui.refusedDrop = { names: ['broken.wav'], reason: 'unsupported codec' }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.refusal').text()).toContain(
+      'broken.wav could not be decoded — unsupported codec',
+    )
+
+    await wrapper.get('.refusal .dismiss').trigger('click')
+
+    expect(wrapper.find('.refusal').exists()).toBe(false)
+  })
+
+  it('counts them when several are turned down at once', async () => {
+    const ui = useUiStore()
+    const wrapper = mount(BottomBar)
+
+    ui.refusedDrop = { names: ['one.wav', 'two.wav'], reason: 'unsupported codec' }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.refusal').text()).toContain('2 files could not be decoded')
   })
 })
 

@@ -187,6 +187,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
 
           return { hits, truncated: false }
         },
+        audio_undecodable: () => [],
         audio_peaks: ({ path, columns }) => {
           const total = Math.max(1, Number(columns))
           const sample = given.card?.slots

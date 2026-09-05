@@ -1,5 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { findUndecodable } from '@/audio'
+import { baseName } from '@/filesystem'
 import { useAudioStore } from '@/stores/audio'
 import { usePadsStore } from '@/stores/pads'
 import { type DropMode, padsInTheWay, planDrop } from '@/domain/fill'
@@ -27,6 +29,11 @@ export interface PendingDrop {
   inTheWay: number
 }
 
+export interface RefusedDrop {
+  names: string[]
+  reason: string
+}
+
 export interface SelectedAudioInfo {
   frames: number
   sampleRate: number
@@ -39,6 +46,7 @@ export const useUiStore = defineStore('ui', () => {
   const dragOverPadId = ref<PadId | null>(null)
   const dragMode = ref<DropMode>('fill')
   const pendingDrop = ref<PendingDrop | null>(null)
+  const refusedDrop = ref<RefusedDrop | null>(null)
   const isLoadingAudio = ref(false)
   const audioInfo = ref<SelectedAudioInfo | null>(null)
   const sidebarWidth = ref(SIDEBAR_DEFAULT_WIDTH)
@@ -125,6 +133,41 @@ export const useUiStore = defineStore('ui', () => {
     dragOverPadId.value = null
   }
 
+  async function dropAudio(padId: PadId, slot: number, sources: AudioRef[]): Promise<void> {
+    const usable = await decodableAmong(sources)
+    const [only] = usable
+
+    if (!only) {
+      return
+    }
+
+    if (usable.length === 1) {
+      usePadsStore().assignAudio(padId, only)
+      selectPad(padId)
+      return
+    }
+
+    proposeDrop(padId, slot, usable)
+  }
+
+  async function decodableAmong(sources: AudioRef[]): Promise<AudioRef[]> {
+    refusedDrop.value = null
+
+    const refused = await findUndecodable(sources.map((source) => source.path)).catch(() => [])
+    const [first] = refused
+    if (!first) {
+      return sources
+    }
+
+    refusedDrop.value = { names: refused.map((file) => baseName(file.path)), reason: first.reason }
+    const rejected = new Set(refused.map((file) => file.path))
+    return sources.filter((source) => !rejected.has(source.path))
+  }
+
+  function forgetRefusal(): void {
+    refusedDrop.value = null
+  }
+
   function proposeDrop(padId: PadId, slot: number, sources: AudioRef[]): void {
     const inTheWay = padsInTheWay(usePadsStore().byId, slot, sources.length)
     dragMode.value = 'fill'
@@ -166,6 +209,7 @@ export const useUiStore = defineStore('ui', () => {
     selectedPad,
     dragPayload,
     pendingDrop,
+    refusedDrop,
     fillOrdinalById,
     isLoadingAudio,
     audioInfo,
@@ -180,7 +224,8 @@ export const useUiStore = defineStore('ui', () => {
     dragOverPad,
     dragOutOfPad,
     endDrag,
-    proposeDrop,
+    dropAudio,
+    forgetRefusal,
     previewDrop,
     commitDrop,
     closeDrop,

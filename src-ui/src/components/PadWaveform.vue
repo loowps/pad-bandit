@@ -197,7 +197,7 @@ function handleDrop(): void {
   isDragOver.value = false
 
   if (pad && dropped) {
-    pads.assignAudio(pad.id, dropped)
+    void ui.dropAudio(pad.id, pad.slot, [dropped])
   }
   ui.endDrag()
 }
