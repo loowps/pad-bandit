@@ -112,4 +112,9 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Tests
+        if: runner.os != 'Linux'
         run: cargo test --locked
+
+      - name: Tests, without the ones that need a sound card
+        if: runner.os == 'Linux'
+        run: cargo test --locked --lib
