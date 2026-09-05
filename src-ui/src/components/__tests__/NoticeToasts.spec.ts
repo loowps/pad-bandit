@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import NoticeToasts from '@/components/NoticeToasts.vue'
@@ -7,6 +7,11 @@ import { useNoticesStore } from '@/stores/notices'
 describe('NoticeToasts', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('shows nothing while there is nothing to say', () => {
