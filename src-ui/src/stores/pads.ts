@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import type { CardState } from '@/card'
+import { useNoticesStore } from '@/stores/notices'
 import {
   type AudioRef,
   BANK_NAMES,
@@ -46,11 +47,7 @@ interface FillRecord {
   filled: FilledPad[]
 }
 
-export interface FillOutcome {
-  filled: number
-  requested: number
-  mode: DropMode
-}
+const FILL_NOTICE = 'pads:fill'
 
 export const usePadsStore = defineStore('pads', () => {
   const byId = ref<Record<PadId, Pad>>(createEmptyCard())
@@ -104,16 +101,6 @@ export const usePadsStore = defineStore('pads', () => {
   const preparedPadIds = computed<PadId[]>(() => plan.value.map((change) => change.padId))
 
   const hasPreparedPads = computed(() => plan.value.length > 0)
-
-  const lastFill = computed<FillOutcome | null>(() =>
-    fillRecord.value
-      ? {
-          filled: fillRecord.value.filled.length,
-          requested: fillRecord.value.requested,
-          mode: fillRecord.value.mode,
-        }
-      : null,
-  )
 
   const assignedAudioPaths = computed<Set<string>>(
     () => new Set(allPads.value.flatMap((pad) => (pad.audio ? [pad.audio.path] : []))),
@@ -182,7 +169,28 @@ export const usePadsStore = defineStore('pads', () => {
     })
 
     fillRecord.value = { requested: sources.length, mode, filled }
+    announceFill()
     return targets
+  }
+
+  function announceFill(): void {
+    const record = fillRecord.value
+    if (!record) {
+      return
+    }
+
+    const missed = record.requested - record.filled.length
+    const verb = record.mode === 'overwrite' ? 'Overwrote' : 'Filled'
+
+    useNoticesStore().notify({
+      severity: missed > 0 ? 'warning' : 'info',
+      source: FILL_NOTICE,
+      title:
+        missed > 0
+          ? `${verb} ${record.filled.length} of ${record.requested} pads — ${missed} did not fit`
+          : `${verb} ${record.filled.length} pads`,
+      action: { label: 'Undo', run: undoFill },
+    })
   }
 
   function undoFill(): void {
@@ -195,6 +203,7 @@ export const usePadsStore = defineStore('pads', () => {
 
   function forgetFill(): void {
     fillRecord.value = null
+    useNoticesStore().resolve(FILL_NOTICE)
   }
 
   function clearPad(id: PadId): void {
@@ -305,7 +314,6 @@ export const usePadsStore = defineStore('pads', () => {
     plan,
     preparedPadIds,
     hasPreparedPads,
-    lastFill,
     padById,
     changeFor,
     isPrepared,
@@ -313,8 +321,6 @@ export const usePadsStore = defineStore('pads', () => {
     updateSettings,
     assignAudio,
     fillFrom,
-    undoFill,
-    forgetFill,
     clearPad,
     revertPad,
     discardChanges,

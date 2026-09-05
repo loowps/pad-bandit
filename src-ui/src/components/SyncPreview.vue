@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useSyncStore } from '@/stores/sync'
 import { padIdForSlot } from '@/domain/pad'
+import { outcomeSummary } from '@/domain/sync'
+import { useDialog } from '@/composables/useDialog'
 import type { Problem } from '@/sync'
 
 const sync = useSyncStore()
+const surface = ref<HTMLElement | null>(null)
+
+useDialog(surface, () => sync.close())
 
 const summary = computed(() => {
   const report = sync.report
@@ -27,23 +32,7 @@ const progressText = computed(() => {
   return `${current.phase}${pad} · ${current.slotsDone} of ${current.slotsTotal}`
 })
 
-const outcomeText = computed(() => {
-  const done = sync.outcome
-  if (!done) {
-    return ''
-  }
-  const parts = [`${done.applied.length} pad${done.applied.length === 1 ? '' : 's'} written`]
-  if (done.failures.length) {
-    parts.push(`${done.failures.length} failed`)
-  }
-  if (done.cancelled) {
-    parts.push(`cancelled, ${done.skipped.length} skipped`)
-  }
-  if (!done.verified) {
-    parts.push('the card did not read back as expected')
-  }
-  return parts.join(' · ')
-})
+const outcomeText = computed(() => (sync.outcome ? outcomeSummary(sync.outcome) : ''))
 
 function problemText(problem: Problem): string {
   switch (problem.kind) {
@@ -65,7 +54,13 @@ function problemText(problem: Problem): string {
 
 <template>
   <div v-if="sync.isOpen" class="scrim" @click.self="sync.close()">
-    <section class="preview" role="dialog" aria-label="Sync preview">
+    <section
+      ref="surface"
+      class="preview"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sync preview"
+    >
       <header>
         <h2>Sync to card</h2>
         <button type="button" class="action" @click="sync.close()">Close</button>

@@ -1,14 +1,17 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { type PlaybackRequest, useSamplePlayback } from '@/composables/useSamplePlayback'
+import { explain } from '@/domain/errors'
+import { useNoticesStore } from '@/stores/notices'
 
 export const PAD_PLAYBACK = 'pad'
 export const PREVIEW_PLAYBACK = 'preview'
 
+const PLAYBACK_NOTICE = 'audio:playback'
+
 export const useAudioStore = defineStore('audio', () => {
   const isPlaying = ref(false)
   const source = ref<string | null>(null)
-  const error = ref<string | null>(null)
 
   const playback = useSamplePlayback(
     () => {
@@ -16,19 +19,28 @@ export const useAudioStore = defineStore('audio', () => {
     },
     (message) => {
       isPlaying.value = false
-      error.value = message
+      report(message)
     },
   )
 
+  function report(cause: unknown): void {
+    useNoticesStore().notify({
+      severity: 'error',
+      source: PLAYBACK_NOTICE,
+      title: 'Playback stopped',
+      detail: explain(cause, 'The audio output could not be reached.'),
+    })
+  }
+
   async function start(request: PlaybackRequest, sourceId: string = PAD_PLAYBACK): Promise<void> {
-    error.value = null
+    useNoticesStore().resolve(PLAYBACK_NOTICE)
     source.value = sourceId
     isPlaying.value = true
     try {
       await playback.play(request)
     } catch (cause) {
       isPlaying.value = false
-      error.value = cause instanceof Error ? cause.message : String(cause)
+      report(cause)
     }
   }
 
@@ -37,7 +49,7 @@ export const useAudioStore = defineStore('audio', () => {
     try {
       await playback.stop()
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause)
+      report(cause)
     }
   }
 
@@ -57,7 +69,7 @@ export const useAudioStore = defineStore('audio', () => {
     try {
       await playback.seek(frame)
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause)
+      report(cause)
     }
   }
 
@@ -82,7 +94,6 @@ export const useAudioStore = defineStore('audio', () => {
     source,
     positionFrame: playback.positionFrame,
     playingRange: playback.range,
-    error,
     start,
     stop,
     play,

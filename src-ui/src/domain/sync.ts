@@ -1,7 +1,7 @@
 import { audioSourceName, type Pad, type PadId, padIdForSlot } from '@/domain/pad'
 import { editOf } from '@/domain/project'
 import type { PadChange } from '@/domain/plan'
-import type { PlannedAction, PlannedSlot, SyncPlan } from '@/sync'
+import type { PlannedAction, PlannedSlot, SyncOutcome, SyncPlan } from '@/sync'
 
 export interface PreviewRow {
   padId: PadId
@@ -92,6 +92,24 @@ function detailOf(change: PadChange, action: PlannedAction): string {
 
 function sourceName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
+}
+
+export function outcomeSummary(outcome: SyncOutcome): string {
+  const parts = [`${outcome.applied.length} pad${outcome.applied.length === 1 ? '' : 's'} written`]
+  if (outcome.failures.length) {
+    parts.push(`${outcome.failures.length} failed`)
+  }
+  if (outcome.cancelled) {
+    parts.push(`cancelled, ${outcome.skipped.length} skipped`)
+  }
+  if (!outcome.verified) {
+    parts.push('the card did not read back as expected')
+  }
+  return parts.join(' · ')
+}
+
+export function outcomeWentWell(outcome: SyncOutcome): boolean {
+  return outcome.verified && outcome.failures.length === 0 && !outcome.cancelled
 }
 
 export function padLabel(pad: Pad): string {

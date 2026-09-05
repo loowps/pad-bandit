@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { findUndecodable } from '@/audio'
 import { baseName } from '@/filesystem'
 import { useAudioStore } from '@/stores/audio'
+import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
 import { type DropMode, padsInTheWay, planDrop } from '@/domain/fill'
 import {
@@ -17,6 +18,8 @@ export const SIDEBAR_MIN_WIDTH = 180
 export const SIDEBAR_MAX_WIDTH = 480
 export const SIDEBAR_DEFAULT_WIDTH = 240
 
+const UNDECODABLE_NOTICE = 'audio:undecodable'
+
 export type DragPayload =
   | { source: 'pad'; padId: PadId }
   | { source: 'audio'; audio: AudioRef[] }
@@ -27,11 +30,6 @@ export interface PendingDrop {
   slot: number
   sources: AudioRef[]
   inTheWay: number
-}
-
-export interface RefusedDrop {
-  names: string[]
-  reason: string
 }
 
 export interface SelectedAudioInfo {
@@ -46,7 +44,6 @@ export const useUiStore = defineStore('ui', () => {
   const dragOverPadId = ref<PadId | null>(null)
   const dragMode = ref<DropMode>('fill')
   const pendingDrop = ref<PendingDrop | null>(null)
-  const refusedDrop = ref<RefusedDrop | null>(null)
   const isLoadingAudio = ref(false)
   const audioInfo = ref<SelectedAudioInfo | null>(null)
   const sidebarWidth = ref(SIDEBAR_DEFAULT_WIDTH)
@@ -151,21 +148,28 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   async function decodableAmong(sources: AudioRef[]): Promise<AudioRef[]> {
-    refusedDrop.value = null
-
+    const notices = useNoticesStore()
     const refused = await findUndecodable(sources.map((source) => source.path)).catch(() => [])
     const [first] = refused
     if (!first) {
+      notices.resolve(UNDECODABLE_NOTICE)
       return sources
     }
 
-    refusedDrop.value = { names: refused.map((file) => baseName(file.path)), reason: first.reason }
+    const names = refused.map((file) => baseName(file.path))
+    const [only] = names
+    notices.notify({
+      severity: 'error',
+      source: UNDECODABLE_NOTICE,
+      title:
+        names.length === 1
+          ? `${only} could not be decoded`
+          : `${names.length} files could not be decoded`,
+      detail: names.length === 1 ? first.reason : `${first.reason} — ${names.join(', ')}`,
+    })
+
     const rejected = new Set(refused.map((file) => file.path))
     return sources.filter((source) => !rejected.has(source.path))
-  }
-
-  function forgetRefusal(): void {
-    refusedDrop.value = null
   }
 
   function proposeDrop(padId: PadId, slot: number, sources: AudioRef[]): void {
@@ -209,7 +213,6 @@ export const useUiStore = defineStore('ui', () => {
     selectedPad,
     dragPayload,
     pendingDrop,
-    refusedDrop,
     fillOrdinalById,
     isLoadingAudio,
     audioInfo,
@@ -225,7 +228,6 @@ export const useUiStore = defineStore('ui', () => {
     dragOutOfPad,
     endDrag,
     dropAudio,
-    forgetRefusal,
     previewDrop,
     commitDrop,
     closeDrop,

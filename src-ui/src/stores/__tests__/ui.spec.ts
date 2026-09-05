@@ -2,15 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { useAudioStore } from '@/stores/audio'
+import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { diskAudio } from '@/domain/pad'
+import type { Notice } from '@/domain/notices'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
 }))
 
 const invokeMock = vi.mocked(invoke)
+
+function refusal(): Notice | undefined {
+  return useNoticesStore().entries.find((entry) => entry.source === 'audio:undecodable')
+}
 
 describe('ui store', () => {
   beforeEach(() => {
@@ -101,7 +107,7 @@ describe('a drop the decoder is asked about', () => {
     })
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('/samples/kick.wav'))
     expect(ui.selectedPadId).toBe('A1')
-    expect(ui.refusedDrop).toBeNull()
+    expect(refusal()).toBeUndefined()
   })
 
   it('leaves the pad alone when the only file cannot be decoded', async () => {
@@ -115,9 +121,10 @@ describe('a drop the decoder is asked about', () => {
 
     expect(pads.padById('A1')?.audio).toBeNull()
     expect(ui.selectedPadId).toBeNull()
-    expect(ui.refusedDrop).toEqual({
-      names: ['broken.wav'],
-      reason: 'the file holds no decodable audio track',
+    expect(refusal()).toMatchObject({
+      severity: 'error',
+      title: 'broken.wav could not be decoded',
+      detail: 'the file holds no decodable audio track',
     })
   })
 
@@ -134,7 +141,7 @@ describe('a drop the decoder is asked about', () => {
 
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
     expect(pads.padById('A2')?.audio).toEqual(diskAudio('three.wav'))
-    expect(ui.refusedDrop?.names).toEqual(['two.wav'])
+    expect(refusal()).toMatchObject({ title: 'two.wav could not be decoded' })
   })
 
   it('forgets the last refusal once a clean drop follows', async () => {
@@ -145,7 +152,7 @@ describe('a drop the decoder is asked about', () => {
     invokeMock.mockResolvedValue([])
     await ui.dropAudio('A1', 0, [diskAudio('kick.wav')])
 
-    expect(ui.refusedDrop).toBeNull()
+    expect(refusal()).toBeUndefined()
   })
 
   it('assigns as before when the check itself cannot run', async () => {
@@ -156,6 +163,6 @@ describe('a drop the decoder is asked about', () => {
     await ui.dropAudio('A1', 0, [diskAudio('kick.wav')])
 
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('kick.wav'))
-    expect(ui.refusedDrop).toBeNull()
+    expect(refusal()).toBeUndefined()
   })
 })

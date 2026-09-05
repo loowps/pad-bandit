@@ -304,7 +304,13 @@ mod tests {
         let recent = &store.config().recent_projects;
         assert_eq!(recent.len(), RECENT_PROJECTS_KEPT);
         assert_eq!(recent[0], PathBuf::from("/sets/3.padbandit"));
-        assert_eq!(recent.iter().filter(|it| it.ends_with("3.padbandit")).count(), 1);
+        assert_eq!(
+            recent
+                .iter()
+                .filter(|it| it.ends_with("3.padbandit"))
+                .count(),
+            1
+        );
 
         let reloaded = ConfigStore::load(dir.path()).expect("reload");
         assert_eq!(&reloaded.config().recent_projects, recent);

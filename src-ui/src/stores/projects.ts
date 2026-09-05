@@ -21,14 +21,19 @@ import {
   type Portability,
   portabilityOf,
   projectDocument,
-  type ResolutionSummary,
+  type ProjectResolution,
   resolveProject,
 } from '@/domain/project'
+import { explain } from '@/domain/errors'
 import { useCardStore } from '@/stores/card'
+import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
 
 export const JOURNAL_DELAY_MS = 2000
 const APP_TITLE = 'Pad Bandit'
+const PROJECT_NOTICE = 'project'
+const JOURNAL_NOTICE = 'project:journal'
+const REOPENED_NOTICE = 'project:reopened'
 
 export const useProjectsStore = defineStore('projects', () => {
   const path = ref<string | null>(null)
@@ -36,9 +41,7 @@ export const useProjectsStore = defineStore('projects', () => {
   const savedAt = ref<number | null>(null)
   const recent = ref<string[]>([])
   const orphans = ref<OrphanPad[]>([])
-  const summary = ref<ResolutionSummary | null>(null)
   const recoverable = ref<Project | null>(null)
-  const error = ref<string | null>(null)
 
   const isNamed = computed(() => Boolean(name.value))
   const hasOrphans = computed(() => orphans.value.length > 0)
@@ -53,11 +56,36 @@ export const useProjectsStore = defineStore('projects', () => {
   let stopWatching: (() => void) | null = null
   let stopListening: (() => void) | null = null
 
-  function messageOf(cause: unknown): string {
-    if (cause instanceof Error) {
-      return cause.message
+  function report(cause: unknown, title: string, source: string = PROJECT_NOTICE): void {
+    useNoticesStore().notify({
+      severity: 'error',
+      source,
+      title,
+      detail: explain(cause, 'That project could not be read.'),
+    })
+  }
+
+  function announce(project: Project, resolution: ProjectResolution): void {
+    const lines = [
+      { count: resolution.summary.resolved, label: 'resolved' },
+      { count: resolution.summary.moved, label: 'found in a different slot' },
+      { count: resolution.summary.missing, label: 'source missing' },
+      { count: resolution.summary.keeping, label: 'unchanged' },
+    ].filter((line) => line.count > 0)
+
+    if (lines.length === 0) {
+      return
     }
-    return typeof cause === 'string' ? cause : 'That project could not be read.'
+
+    const against = useCardStore().path
+    const named = project.name ? `“${project.name}”` : 'The project'
+
+    useNoticesStore().notify({
+      severity: resolution.summary.missing > 0 ? 'warning' : 'info',
+      source: REOPENED_NOTICE,
+      title: against ? `${named} reopened against ${against}` : `${named} reopened`,
+      detail: lines.map((line) => `${line.count} ${line.label}`).join(' · '),
+    })
   }
 
   function documentFor(as: string): Project {
@@ -70,7 +98,7 @@ export const useProjectsStore = defineStore('projects', () => {
     const resolution = resolveProject(project, pads.cardPads)
     pads.applyProject(resolution)
     orphans.value = resolution.orphans
-    summary.value = resolution.summary
+    announce(project, resolution)
     path.value = from
     name.value = project.name
     savedAt.value = project.savedAt
@@ -80,14 +108,14 @@ export const useProjectsStore = defineStore('projects', () => {
     path.value = stored.path
     name.value = stored.project.name
     savedAt.value = stored.project.savedAt
-    error.value = null
+    useNoticesStore().resolve(PROJECT_NOTICE)
   }
 
   async function refresh(): Promise<void> {
     try {
       recent.value = await recentProjects()
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The recent projects list could not be read')
     }
   }
 
@@ -100,7 +128,7 @@ export const useProjectsStore = defineStore('projects', () => {
       const chosen = await pickProjectToSave()
       return chosen ? saveTo(chosen) : false
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The project could not be saved')
       return false
     }
   }
@@ -112,7 +140,7 @@ export const useProjectsStore = defineStore('projects', () => {
       await refresh()
       return true
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The project could not be saved')
       return false
     }
   }
@@ -125,11 +153,11 @@ export const useProjectsStore = defineStore('projects', () => {
       }
       const stored = await openProject(chosen)
       adopt(stored.project, stored.path)
-      error.value = null
+      useNoticesStore().resolve(PROJECT_NOTICE)
       await refresh()
       return true
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The project could not be opened')
       return false
     }
   }
@@ -140,8 +168,9 @@ export const useProjectsStore = defineStore('projects', () => {
     name.value = null
     savedAt.value = null
     orphans.value = []
-    summary.value = null
-    error.value = null
+    const notices = useNoticesStore()
+    notices.resolve(PROJECT_NOTICE)
+    notices.resolve(REOPENED_NOTICE)
     void clearJournal()
   }
 
@@ -150,7 +179,7 @@ export const useProjectsStore = defineStore('projects', () => {
       await forgetRecentProjects()
       await refresh()
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The recent projects list could not be cleared')
     }
   }
 
@@ -161,7 +190,7 @@ export const useProjectsStore = defineStore('projects', () => {
       recoveredPath = journal?.path ?? null
       return recoverable.value !== null
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'Unsaved work could not be looked for')
       return false
     }
   }
@@ -183,7 +212,7 @@ export const useProjectsStore = defineStore('projects', () => {
     try {
       await clearJournal()
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The recovered work could not be cleared')
     }
   }
 
@@ -199,7 +228,7 @@ export const useProjectsStore = defineStore('projects', () => {
         await clearJournal()
       }
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'Unsaved work is not being kept for recovery', JOURNAL_NOTICE)
     }
   }
 
@@ -231,7 +260,7 @@ export const useProjectsStore = defineStore('projects', () => {
     try {
       stopListening = await onMenuAction(apply)
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The Project menu is not connected')
     }
   }
 
@@ -286,9 +315,7 @@ export const useProjectsStore = defineStore('projects', () => {
     savedAt,
     recent,
     orphans,
-    summary,
     recoverable,
-    error,
     isNamed,
     isDirty,
     title,

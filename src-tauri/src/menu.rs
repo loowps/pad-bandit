@@ -30,9 +30,13 @@ pub enum Action {
     SaveAs,
     ForgetRecent,
     #[serde(rename_all = "camelCase")]
-    OpenRecent { path: PathBuf },
+    OpenRecent {
+        path: PathBuf,
+    },
     #[serde(rename_all = "camelCase")]
-    SetTheme { theme: Theme },
+    SetTheme {
+        theme: Theme,
+    },
 }
 
 pub fn apply<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<()> {
@@ -139,9 +143,8 @@ fn recent_submenu<R: Runtime>(
     }
 
     for (index, path) in recent.iter().enumerate() {
-        let item =
-            MenuItemBuilder::with_id(format!("{RECENT_PREFIX}{index}"), recent_label(path))
-                .build(app)?;
+        let item = MenuItemBuilder::with_id(format!("{RECENT_PREFIX}{index}"), recent_label(path))
+            .build(app)?;
         submenu = submenu.item(&item);
     }
 

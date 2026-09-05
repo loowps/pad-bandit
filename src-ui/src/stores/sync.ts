@@ -10,10 +10,20 @@ import {
   type SyncOutcome,
   type SyncProgress,
 } from '@/sync'
-import { type PreviewRow, previewRows, syncPlan } from '@/domain/sync'
+import {
+  outcomeSummary,
+  outcomeWentWell,
+  type PreviewRow,
+  previewRows,
+  syncPlan,
+} from '@/domain/sync'
+import { explain } from '@/domain/errors'
 import { useCardStore } from '@/stores/card'
+import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
 import type { PadId } from '@/domain/pad'
+
+const SYNC_NOTICE = 'sync'
 
 export const useSyncStore = defineStore('sync', () => {
   const isOpen = ref(false)
@@ -105,7 +115,7 @@ export const useSyncStore = defineStore('sync', () => {
       report.value = await preflightSync(planNow(card.fingerprint))
       return report.value
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause)
+      error.value = explain(cause, 'The card could not be checked.')
       report.value = null
       return null
     } finally {
@@ -144,9 +154,10 @@ export const useSyncStore = defineStore('sync', () => {
       deselected.value = new Set()
       outcome.value = result.outcome
       report.value = null
+      announce(result.outcome)
       return result.outcome
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause)
+      error.value = explain(cause, 'The card could not be written.')
       return null
     } finally {
       stop?.()
@@ -156,11 +167,26 @@ export const useSyncStore = defineStore('sync', () => {
     }
   }
 
+  function announce(done: SyncOutcome): void {
+    const badly = done.failures.length > 0 || !done.verified
+
+    useNoticesStore().notify({
+      severity: badly ? 'error' : outcomeWentWell(done) ? 'info' : 'warning',
+      source: SYNC_NOTICE,
+      title: badly
+        ? 'Sync finished with problems'
+        : done.cancelled
+          ? 'Sync cancelled'
+          : 'Sync finished',
+      detail: outcomeSummary(done),
+    })
+  }
+
   async function cancel(): Promise<void> {
     try {
       await cancelSync()
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause)
+      error.value = explain(cause, 'The sync could not be stopped.')
     }
   }
 

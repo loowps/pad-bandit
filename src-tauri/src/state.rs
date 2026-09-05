@@ -44,7 +44,11 @@ impl AppState {
         grants.grant_all(&store.config().recent_projects);
 
         Ok(Self {
-            inner: Mutex::new(Inner { store, scopes, grants }),
+            inner: Mutex::new(Inner {
+                store,
+                scopes,
+                grants,
+            }),
             indexes: Mutex::new(Indexes::default()),
             syncing: Mutex::new(()),
             cancellation: crate::sync::apply::Cancellation::default(),
@@ -244,7 +248,10 @@ impl AppState {
     pub fn card_presence(&self) -> crate::card::CardPresence {
         match self.card_scope() {
             Ok((scopes, card_path)) => crate::card::presence(&scopes, &card_path),
-            Err(_) => crate::card::CardPresence { present: false, fingerprint: None },
+            Err(_) => crate::card::CardPresence {
+                present: false,
+                fingerprint: None,
+            },
         }
     }
 
@@ -341,23 +348,13 @@ mod tests {
         assert_eq!(config.browse_folders.len(), 1);
 
         let sample = f.browse.join("kick.wav");
-        f.state
-            .scopes().readable(&sample)
-            .expect("readable");
-        assert!(
-            f.state
-                .scopes().writable(&sample)
-                .is_err()
-        );
+        f.state.scopes().readable(&sample).expect("readable");
+        assert!(f.state.scopes().writable(&sample).is_err());
 
         let restarted =
             AppState::load(&f.config_dir, f._root.path().join("data").as_path()).expect("restart");
         assert_eq!(restarted.config().browse_folders, config.browse_folders);
-        assert!(
-            restarted
-                .scopes().readable(&sample)
-                .is_ok()
-        );
+        assert!(restarted.scopes().readable(&sample).is_ok());
     }
 
     #[test]
@@ -370,7 +367,8 @@ mod tests {
 
         assert!(
             f.state
-                .scopes().readable(&f.browse.join("kick.wav"))
+                .scopes()
+                .readable(&f.browse.join("kick.wav"))
                 .is_err()
         );
     }
@@ -381,18 +379,10 @@ mod tests {
         let pad_info = f.card.join("PAD_INFO.BIN");
 
         f.state.set_card_path(Some(&f.card)).expect("set card path");
-        assert!(
-            f.state
-                .scopes().writable(&pad_info)
-                .is_ok()
-        );
+        assert!(f.state.scopes().writable(&pad_info).is_ok());
 
         f.state.set_card_path(None).expect("clear card path");
-        assert!(
-            f.state
-                .scopes().writable(&pad_info)
-                .is_err()
-        );
+        assert!(f.state.scopes().writable(&pad_info).is_err());
         assert_eq!(f.state.config().card_path, None);
     }
 

@@ -100,7 +100,7 @@ test('reports a folder that holds no pad data', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Choose card folder…' }).click()
 
-  await expect(page.getByText('no pad data on that card')).toBeVisible()
+  await expect(page.getByText('That folder holds no pad data.')).toBeVisible()
 })
 
 test('saves the pending work as a project and reopens it', async ({ page }) => {

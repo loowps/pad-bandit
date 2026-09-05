@@ -3,14 +3,15 @@ import AppToolbar from '@/components/AppToolbar.vue'
 import BankGrid from '@/components/BankGrid.vue'
 import BottomBar from '@/components/BottomBar.vue'
 import FileBrowser from '@/components/FileBrowser.vue'
+import NoticeToasts from '@/components/NoticeToasts.vue'
 import PaneDivider from '@/components/PaneDivider.vue'
 import PadParameters from '@/components/PadParameters.vue'
 import PadWaveform from '@/components/PadWaveform.vue'
-import ReconciliationBanner from '@/components/ReconciliationBanner.vue'
-import RecoveryBanner from '@/components/RecoveryBanner.vue'
+import RecoveryDialog from '@/components/RecoveryDialog.vue'
 import PadFillPrompt from '@/components/PadFillPrompt.vue'
 import SyncPreview from '@/components/SyncPreview.vue'
 import { onMounted, onUnmounted } from 'vue'
+import { aDialogIsOpen } from '@/composables/useDialog'
 import { useCardStore } from '@/stores/card'
 import { useFileBrowserStore } from '@/stores/fileBrowser'
 import { useProjectsStore } from '@/stores/projects'
@@ -43,9 +44,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="editor">
-    <RecoveryBanner />
-    <ReconciliationBanner />
+  <div class="editor" :inert="aDialogIsOpen || undefined">
     <main class="editor-body">
       <FileBrowser class="editor-sidebar" :style="{ width: ui.sidebarWidth + 'px' }" />
       <PaneDivider
@@ -66,9 +65,11 @@ onUnmounted(() => {
       </div>
     </main>
     <BottomBar />
-    <SyncPreview />
-    <PadFillPrompt />
+    <NoticeToasts />
   </div>
+  <SyncPreview />
+  <PadFillPrompt />
+  <RecoveryDialog />
 </template>
 
 <style scoped>

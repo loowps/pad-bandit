@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { useNoticesStore } from '@/stores/notices'
 import { useThemeStore } from '@/stores/theme'
 import type { AppConfig, Theme } from '@/config'
 import type { MenuAction } from '@/projects'
@@ -84,6 +85,10 @@ describe('theme store', () => {
     await theme.choose('dark')
 
     expect(theme.preference).toBe('system')
-    expect(theme.error).toBe('config is read-only')
+    expect(useNoticesStore().entries[0]).toMatchObject({
+      severity: 'error',
+      title: 'The appearance could not be changed',
+      detail: 'config is read-only',
+    })
   })
 })

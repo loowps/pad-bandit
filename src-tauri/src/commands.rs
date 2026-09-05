@@ -14,8 +14,8 @@ use crate::fs::Entry;
 use crate::index::{self, SearchOutcome};
 use crate::projects::{Journal, PROJECT_EXTENSION, Project, StoredProject};
 use crate::state::{AppState, SyncResult};
-use crate::sync::{Preflight, SyncPlan};
 use crate::sync::apply::Progress;
+use crate::sync::{Preflight, SyncPlan};
 
 #[tauri::command]
 pub fn config_get(state: State<'_, AppState>) -> Config {
@@ -90,13 +90,19 @@ pub fn sync_preflight(state: State<'_, AppState>, plan: SyncPlan) -> Result<Pref
 }
 
 #[tauri::command]
-pub async fn project_pick_to_save(app: AppHandle, state: State<'_, AppState>) -> Result<Option<PathBuf>> {
+pub async fn project_pick_to_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<PathBuf>> {
     let picked = ask_for_project_file(&app, Purpose::Save).await;
     grant(&state, picked)
 }
 
 #[tauri::command]
-pub async fn project_pick_to_open(app: AppHandle, state: State<'_, AppState>) -> Result<Option<PathBuf>> {
+pub async fn project_pick_to_open(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<PathBuf>> {
     let picked = ask_for_project_file(&app, Purpose::Open).await;
     grant(&state, picked)
 }

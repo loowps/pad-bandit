@@ -228,7 +228,10 @@ mod tests {
     fn short_files_are_chunked_finely_and_long_ones_stay_coarse() {
         assert_eq!(chunk_frames_for(None), CHUNK_FRAMES);
         assert_eq!(chunk_frames_for(Some(0)), CHUNK_FRAMES);
-        assert_eq!(chunk_frames_for(Some(u64::from(SAMPLE_RATE) * 600)), CHUNK_FRAMES);
+        assert_eq!(
+            chunk_frames_for(Some(u64::from(SAMPLE_RATE) * 600)),
+            CHUNK_FRAMES
+        );
         assert!(chunk_frames_for(Some(u64::from(SAMPLE_RATE) / 2)) < CHUNK_FRAMES);
     }
 
@@ -242,7 +245,10 @@ mod tests {
         let count = chunks.min_max.len() / 2;
 
         assert!(chunks.chunk_frames < CHUNK_FRAMES);
-        assert!(count >= 4096, "a quarter-second file gave only {count} chunks");
+        assert!(
+            count >= 4096,
+            "a quarter-second file gave only {count} chunks"
+        );
     }
 
     #[test]
@@ -277,7 +283,10 @@ mod tests {
 
         for column in 0..30 {
             let max = peaks.min_max[column * 2 + 1];
-            assert!(max.abs() < 0.05, "column {column} bled from the loud half: {max}");
+            assert!(
+                max.abs() < 0.05,
+                "column {column} bled from the loud half: {max}"
+            );
         }
         assert!(peaks.min_max[63 * 2 + 1] > 0.7);
     }
@@ -416,5 +425,3 @@ mod tests {
         assert_eq!(peaks.min_max, vec![0.0; 8]);
     }
 }
-
-

@@ -140,6 +140,9 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
       })
 
+      const refuse = (code: string, message: string): Promise<never> =>
+        Promise.reject({ code, message })
+
       const handlers: Record<string, (args: Record<string, never>) => unknown> = {
         config_get: () => config,
         config_add_folder: ({ path }) => {
@@ -188,6 +191,10 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
           return { hits, truncated: false }
         },
         audio_undecodable: () => [],
+        audio_play: () => null,
+        audio_stop: () => null,
+        audio_seek: () => null,
+        audio_set_gain: () => null,
         audio_peaks: ({ path, columns }) => {
           const total = Math.max(1, Number(columns))
           const sample = given.card?.slots
@@ -219,7 +226,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
         card_read: () => {
           if (!given.card) {
-            throw new Error('no pad data on that card')
+            return refuse('notACard', 'no pad data on that card')
           }
           return given.card
         },
@@ -237,7 +244,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
         project_open: ({ path }) => {
           if (!files[path]) {
-            throw new Error(`no project at ${path}`)
+            return refuse('io', `no project at ${path}`)
           }
           recent = [path, ...recent.filter((known) => known !== path)]
           return { path, project: files[path] }

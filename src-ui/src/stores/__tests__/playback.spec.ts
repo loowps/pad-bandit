@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { useAudioStore } from '@/stores/audio'
+import { useNoticesStore } from '@/stores/notices'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
@@ -108,6 +109,10 @@ describe('playback', () => {
     await audio.start(request)
 
     expect(audio.isPlaying).toBe(false)
-    expect(audio.error).toBe('no audio output device is available')
+    expect(useNoticesStore().entries[0]).toMatchObject({
+      severity: 'error',
+      title: 'Playback stopped',
+      detail: 'no audio output device is available',
+    })
   })
 })
