@@ -46,6 +46,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
   const childrenByPath = shallowRef<Record<string, FsNode[]>>({})
   const expandedPaths = ref(new Set<string>())
   const loadingPaths = ref(new Set<string>())
+  const failedPaths = ref(new Map<string, string>())
   const selectedPaths = ref<string[]>([])
   const previewPath = ref<string | null>(null)
   const previewStartFrame = ref<number | null>(null)
@@ -110,12 +111,17 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     return loadingPaths.value.has(directoryPath)
   }
 
+  function failureOf(directoryPath: string): string | null {
+    return failedPaths.value.get(directoryPath) ?? null
+  }
+
   async function loadChildren(directoryPath: string): Promise<void> {
     if (childrenByPath.value[directoryPath] || loadingPaths.value.has(directoryPath)) {
       return
     }
 
     loadingPaths.value.add(directoryPath)
+    failedPaths.value.delete(directoryPath)
     try {
       const children = await getFileSystemGateway().listChildren(directoryPath)
       childrenByPath.value = {
@@ -123,7 +129,8 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
         [directoryPath]: browsable(children),
       }
     } catch (cause) {
-      error.value = messageOf(cause, 'Could not read that folder.')
+      failedPaths.value.set(directoryPath, messageOf(cause, 'Could not read that folder.'))
+      expandedPaths.value.delete(directoryPath)
     } finally {
       loadingPaths.value.delete(directoryPath)
     }
@@ -151,6 +158,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
 
     const ticket = ++latestSearch
     searching.value = true
+    error.value = null
     try {
       const result = await getFileSystemGateway().searchSamples(query.value.trim())
       if (ticket !== latestSearch) {
@@ -199,20 +207,21 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
   async function reloadOpenFolders(): Promise<void> {
     const gateway = getFileSystemGateway()
     const reread: Record<string, FsNode[]> = {}
-    const unreadable: string[] = []
+    const failures = new Map<string, string>()
 
     for (const directoryPath of expandedPaths.value) {
       try {
         reread[directoryPath] = browsable(await gateway.listChildren(directoryPath))
-      } catch {
-        unreadable.push(directoryPath)
+      } catch (cause) {
+        failures.set(directoryPath, messageOf(cause, 'Could not read that folder.'))
       }
     }
 
-    for (const directoryPath of unreadable) {
+    for (const directoryPath of failures.keys()) {
       expandedPaths.value.delete(directoryPath)
     }
 
+    failedPaths.value = failures
     childrenByPath.value = reread
     pruneSelection()
   }
@@ -286,6 +295,13 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
         remaining[path] = children
       }
     }
+    const keptFailures = new Map<string, string>()
+    for (const [path, message] of failedPaths.value) {
+      if (!isUnder(path, folder.path)) {
+        keptFailures.set(path, message)
+      }
+    }
+    failedPaths.value = keptFailures
     childrenByPath.value = remaining
     pruneSelection()
   }
@@ -379,6 +395,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     isExpanded,
     isLoading,
     isSelected,
+    failureOf,
     restore,
     toggleDirectory,
     addRoot,

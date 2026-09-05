@@ -15,12 +15,16 @@ const ui = useUiStore()
 const node = computed(() => props.row.node)
 const isExpanded = computed(() => browser.isExpanded(node.value.path))
 const isLoading = computed(() => browser.isLoading(node.value.path))
+const failure = computed(() => browser.failureOf(node.value.path))
 const isSelected = computed(() => browser.isSelected(node.value.path))
 const isPreviewed = computed(() => browser.previewPath === node.value.path)
 const isAssigned = computed(() => !node.value.isDirectory && pads.usesAudioPath(node.value.path))
 const indent = computed(() => `${0.375 + props.row.depth * 0.75}rem`)
-const label = computed(() =>
+const path = computed(() =>
   props.row.location ? `${props.row.location}/${node.value.name}` : node.value.name,
+)
+const label = computed(() =>
+  failure.value ? `${path.value} — ${failure.value} Click to retry.` : path.value,
 )
 
 function activate(event: MouseEvent): void {
@@ -54,7 +58,11 @@ function removeRoot(): void {
       type="button"
       class="row"
       role="treeitem"
-      :class="{ 'is-directory': node.isDirectory, 'is-root': Boolean(row.rootId) }"
+      :class="{
+        'is-directory': node.isDirectory,
+        'is-root': Boolean(row.rootId),
+        'is-failed': Boolean(failure),
+      }"
       :style="{ paddingLeft: indent }"
       :draggable="!node.isDirectory"
       :aria-level="row.depth + 1"
@@ -82,6 +90,7 @@ function removeRoot(): void {
       <span class="name">{{ node.name }}</span>
       <span v-if="row.location" class="location">{{ row.location }}</span>
       <span v-if="isLoading" class="loading">…</span>
+      <span v-else-if="failure" class="failure">{{ failure }}</span>
     </button>
 
     <button
@@ -193,6 +202,28 @@ function removeRoot(): void {
 .loading {
   margin-left: auto;
   color: var(--text-muted);
+}
+
+.failure {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: 0.375rem;
+  overflow: hidden;
+  font-size: 0.6875rem;
+  color: var(--status-danger);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row.is-failed .glyph {
+  fill: var(--status-danger);
+}
+
+.row-wrap.is-selected .failure,
+.row-wrap.is-selected .row.is-failed .glyph {
+  color: inherit;
+  fill: currentcolor;
 }
 
 .remove {
