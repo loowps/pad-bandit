@@ -2,13 +2,22 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { useAudioStore } from '@/stores/audio'
 import { usePadsStore } from '@/stores/pads'
-import type { AudioRef, Pad, PadId } from '@/domain/pad'
+import {
+  type AudioRef,
+  type BankName,
+  type Pad,
+  padIdAfterBankSwap,
+  type PadId,
+} from '@/domain/pad'
 
 export const SIDEBAR_MIN_WIDTH = 180
 export const SIDEBAR_MAX_WIDTH = 480
 export const SIDEBAR_DEFAULT_WIDTH = 240
 
-export type DragPayload = { source: 'pad'; padId: PadId } | { source: 'audio'; audio: AudioRef }
+export type DragPayload =
+  | { source: 'pad'; padId: PadId }
+  | { source: 'audio'; audio: AudioRef }
+  | { source: 'bank'; bank: BankName }
 
 export interface SelectedAudioInfo {
   frames: number
@@ -36,6 +45,13 @@ export const useUiStore = defineStore('ui', () => {
     selectedPadId.value = id
     playbackStartFrame.value = null
     useAudioStore().pause()
+  }
+
+  function followBankSwap(first: BankName, second: BankName): void {
+    const pad = selectedPad.value
+    if (pad) {
+      selectedPadId.value = padIdAfterBankSwap(pad.slot, first, second)
+    }
   }
 
   function setAudioInfo(info: SelectedAudioInfo | null): void {
@@ -70,6 +86,7 @@ export const useUiStore = defineStore('ui', () => {
     setAudioInfo,
     setPlaybackStart,
     selectPad,
+    followBankSwap,
     startDrag,
     endDrag,
   }

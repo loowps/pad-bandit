@@ -1,13 +1,47 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import PadButton from '@/components/PadButton.vue'
-import type { Bank } from '@/stores/pads'
+import { type Bank, usePadsStore } from '@/stores/pads'
+import { useUiStore } from '@/stores/ui'
 
-defineProps<{ bank: Bank }>()
+const props = defineProps<{ bank: Bank }>()
+
+const pads = usePadsStore()
+const ui = useUiStore()
+
+const isDropTarget = computed(() => {
+  const payload = ui.dragPayload
+  return payload?.source === 'bank' && payload.bank !== props.bank.name
+})
+
+function handleDragStart(): void {
+  ui.startDrag({ source: 'bank', bank: props.bank.name })
+}
+
+function handleDrop(): void {
+  const payload = ui.dragPayload
+  ui.endDrag()
+
+  if (payload?.source === 'bank') {
+    pads.swapBanks(payload.bank, props.bank.name)
+    ui.followBankSwap(payload.bank, props.bank.name)
+  }
+}
 </script>
 
 <template>
   <section class="bank">
-    <h2 class="bank-name">Bank {{ bank.name }}</h2>
+    <header
+      class="bank-header"
+      :class="{ 'is-target': isDropTarget }"
+      draggable="true"
+      @dragstart="handleDragStart"
+      @dragend="ui.endDrag()"
+      @dragover.prevent
+      @drop.prevent="handleDrop"
+    >
+      <h2 class="bank-name">Bank {{ bank.name }}</h2>
+    </header>
     <div class="pad-grid">
       <PadButton v-for="pad in bank.pads" :key="pad.id" :pad="pad" />
     </div>
@@ -25,6 +59,27 @@ defineProps<{ bank: Bank }>()
   border-radius: var(--radius-lg);
 }
 
+.bank-header {
+  padding: 0.125rem 0.25rem;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  user-select: none;
+}
+
+.bank-header:active {
+  cursor: grabbing;
+}
+
+.bank-header.is-target {
+  border-color: var(--dropzone-border);
+}
+
+.bank-header.is-target:hover {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+}
+
 .bank-name {
   margin: 0;
   font-size: 0.6875rem;
@@ -32,6 +87,11 @@ defineProps<{ bank: Bank }>()
   color: var(--text-muted);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.swap-menu option {
+  color: var(--text-default);
+  background: var(--control-surface);
 }
 
 .pad-grid {

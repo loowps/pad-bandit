@@ -681,6 +681,31 @@ mod tests {
     }
 
     #[test]
+    fn emptying_a_slot_a_sample_already_left_still_collapses_its_region() {
+        let f = fixture(2);
+
+        let outcome = f
+            .run(&plan(vec![
+                moved(5, 0),
+                PlannedSlot {
+                    slot: 0,
+                    action: PlannedAction::Delete,
+                    edit: edit(),
+                },
+            ]))
+            .0;
+
+        assert!(outcome.failures.is_empty());
+        assert!(f.samples.join(sample_file_name(5)).exists());
+        assert!(!f.samples.join(sample_file_name(0)).exists());
+
+        let record = f.card().records()[0];
+        assert_eq!(record.original_start, record.original_end);
+        assert_eq!(f.card().records()[5].original_end, 512 + 4_000);
+        assert_eq!(f.strays(), 0);
+    }
+
+    #[test]
     fn a_settings_only_change_writes_a_record_and_no_file() {
         let f = fixture(2);
         let before = std::fs::read(f.samples.join(sample_file_name(0))).expect("read");

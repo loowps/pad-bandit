@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import PadButton from '@/components/PadButton.vue'
 import { usePadsStore } from '@/stores/pads'
+import { useUiStore } from '@/stores/ui'
 import { diskAudio, type Pad } from '@/domain/pad'
 
 function padFor(id: string): Pad {
@@ -61,6 +62,20 @@ describe('PadButton', () => {
 
     expect(pads.isPrepared('A1')).toBe(true)
     expect(pads.preparedPadIds).toEqual(['A1'])
+  })
+
+  it('is not a target for a bank being dragged', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.assignAudio('A1', diskAudio('kick.wav'))
+    const wrapper = mount(PadButton, { props: { pad: padFor('A1') } })
+
+    ui.startDrag({ source: 'bank', bank: 'B' })
+    await wrapper.get('button').trigger('drop')
+
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('kick.wav'))
+    expect(ui.selectedPadId).toBeNull()
+    expect(ui.dragPayload).toBeNull()
   })
 
   it('says what kind of change a pad is carrying', async () => {

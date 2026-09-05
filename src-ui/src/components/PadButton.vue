@@ -47,14 +47,16 @@ function handleDragStart(): void {
 
 function handleDrop(): void {
   const payload = ui.dragPayload
+  ui.endDrag()
 
   if (payload?.source === 'audio') {
     pads.assignAudio(props.pad.id, payload.audio)
   } else if (payload?.source === 'pad') {
     pads.swapPads(props.pad.id, payload.padId)
+  } else {
+    return
   }
 
-  ui.endDrag()
   ui.selectPad(props.pad.id)
 }
 </script>
