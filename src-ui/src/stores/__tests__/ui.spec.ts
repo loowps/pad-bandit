@@ -1,9 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { invoke } from '@tauri-apps/api/core'
 import { useAudioStore } from '@/stores/audio'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { diskAudio } from '@/domain/pad'
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
+}))
+
+const invokeMock = vi.mocked(invoke)
 
 describe('ui store', () => {
   beforeEach(() => {
@@ -46,14 +53,16 @@ describe('ui store', () => {
 describe('a drop waiting for an answer', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    invokeMock.mockReset()
+    invokeMock.mockResolvedValue([])
   })
 
-  it('goes away when the pads are replaced under it', () => {
+  it('goes away when the pads are replaced under it', async () => {
     const pads = usePadsStore()
     const ui = useUiStore()
     pads.assignAudio('A1', diskAudio('kick.wav'))
 
-    ui.proposeDrop('A1', 0, [diskAudio('one.wav'), diskAudio('two.wav')])
+    await ui.dropAudio('A1', 0, [diskAudio('one.wav'), diskAudio('two.wav')])
     expect(ui.pendingDrop).not.toBeNull()
 
     pads.resetCard()
@@ -62,14 +71,91 @@ describe('a drop waiting for an answer', () => {
     expect(pads.padById('A1')?.audio).toBeNull()
   })
 
-  it('survives an ordinary edit to a pad', () => {
+  it('survives an ordinary edit to a pad', async () => {
     const pads = usePadsStore()
     const ui = useUiStore()
     pads.assignAudio('A1', diskAudio('kick.wav'))
 
-    ui.proposeDrop('A1', 0, [diskAudio('one.wav'), diskAudio('two.wav')])
+    await ui.dropAudio('A1', 0, [diskAudio('one.wav'), diskAudio('two.wav')])
     pads.updateSettings('A4', { volume: 40 })
 
     expect(ui.pendingDrop).not.toBeNull()
+  })
+})
+
+describe('a drop the decoder is asked about', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    invokeMock.mockReset()
+    invokeMock.mockResolvedValue([])
+  })
+
+  it('assigns a single file the decoder can open', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+
+    await ui.dropAudio('A1', 0, [diskAudio('/samples/kick.wav')])
+
+    expect(invokeMock).toHaveBeenCalledWith('audio_undecodable', {
+      paths: ['/samples/kick.wav'],
+    })
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('/samples/kick.wav'))
+    expect(ui.selectedPadId).toBe('A1')
+    expect(ui.refusedDrop).toBeNull()
+  })
+
+  it('leaves the pad alone when the only file cannot be decoded', async () => {
+    invokeMock.mockResolvedValue([
+      { path: '/samples/broken.wav', reason: 'the file holds no decodable audio track' },
+    ])
+    const pads = usePadsStore()
+    const ui = useUiStore()
+
+    await ui.dropAudio('A1', 0, [diskAudio('/samples/broken.wav')])
+
+    expect(pads.padById('A1')?.audio).toBeNull()
+    expect(ui.selectedPadId).toBeNull()
+    expect(ui.refusedDrop).toEqual({
+      names: ['broken.wav'],
+      reason: 'the file holds no decodable audio track',
+    })
+  })
+
+  it('fills the pads from the files that survive the check', async () => {
+    invokeMock.mockResolvedValue([{ path: 'two.wav', reason: 'unsupported codec' }])
+    const pads = usePadsStore()
+    const ui = useUiStore()
+
+    await ui.dropAudio('A1', 0, [
+      diskAudio('one.wav'),
+      diskAudio('two.wav'),
+      diskAudio('three.wav'),
+    ])
+
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
+    expect(pads.padById('A2')?.audio).toEqual(diskAudio('three.wav'))
+    expect(ui.refusedDrop?.names).toEqual(['two.wav'])
+  })
+
+  it('forgets the last refusal once a clean drop follows', async () => {
+    const ui = useUiStore()
+    invokeMock.mockResolvedValue([{ path: 'broken.wav', reason: 'unsupported codec' }])
+    await ui.dropAudio('A1', 0, [diskAudio('broken.wav')])
+
+    invokeMock.mockResolvedValue([])
+    await ui.dropAudio('A1', 0, [diskAudio('kick.wav')])
+
+    expect(ui.refusedDrop).toBeNull()
+  })
+
+  it('assigns as before when the check itself cannot run', async () => {
+    invokeMock.mockRejectedValue(new Error('the backend is gone'))
+    const pads = usePadsStore()
+    const ui = useUiStore()
+
+    await ui.dropAudio('A1', 0, [diskAudio('kick.wav')])
+
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('kick.wav'))
+    expect(ui.refusedDrop).toBeNull()
   })
 })

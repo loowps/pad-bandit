@@ -278,6 +278,16 @@ mod tests {
     }
 
     #[test]
+    fn a_supported_extension_is_no_promise_the_decoder_can_open_the_file() {
+        let root = TempDir::new().expect("temp dir");
+        let path = root.path().join("not-really.wav");
+        std::fs::write(&path, b"this is plain text wearing a wav extension").expect("write");
+
+        assert!(is_supported_extension("wav"));
+        assert!(AudioSource::open(&path).is_err());
+    }
+
+    #[test]
     fn a_supported_extension_really_opens_in_the_decoder() {
         let root = TempDir::new().expect("temp dir");
         let path = root.path().join("tone.wav");

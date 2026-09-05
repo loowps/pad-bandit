@@ -19,6 +19,15 @@ export function requestPeaks(path: string, columns: number): Promise<Peaks> {
   return invoke<Peaks>('audio_peaks', { path, columns })
 }
 
+export interface UndecodableFile {
+  path: string
+  reason: string
+}
+
+export function findUndecodable(paths: string[]): Promise<UndecodableFile[]> {
+  return invoke<UndecodableFile[]>('audio_undecodable', { paths })
+}
+
 export function onExactPeaks(handler: (payload: ExactPeaks) => void): Promise<UnlistenFn> {
   return listen<ExactPeaks>('peaks:exact', (event) => handler(event.payload))
 }

@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import PadButton from '@/components/PadButton.vue'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { diskAudio, type Pad } from '@/domain/pad'
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn<() => Promise<unknown>>(() => Promise.resolve([])),
+}))
 
 function padFor(id: string): Pad {
   const pad = usePadsStore().padById(id)
@@ -107,6 +111,7 @@ describe('PadButton with several files', () => {
 
     ui.startDrag({ source: 'audio', audio: [diskAudio('snare.wav')] })
     await wrapper.get('button').trigger('drop')
+    await flushPromises()
 
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('snare.wav'))
     expect(ui.selectedPadId).toBe('A1')
@@ -122,6 +127,7 @@ describe('PadButton with several files', () => {
       audio: [diskAudio('one.wav'), diskAudio('two.wav')],
     })
     await wrapper.get('button').trigger('drop')
+    await flushPromises()
 
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
     expect(pads.padById('A2')?.audio).toEqual(diskAudio('two.wav'))
@@ -137,6 +143,7 @@ describe('PadButton with several files', () => {
 
     ui.startDrag({ source: 'audio', audio: [diskAudio('one.wav'), diskAudio('two.wav')] })
     await wrapper.get('button').trigger('drop')
+    await flushPromises()
 
     expect(ui.pendingDrop?.inTheWay).toBe(1)
     expect(pads.padById('A1')?.audio).toBeNull()
@@ -149,7 +156,7 @@ describe('PadButton with several files', () => {
     pads.assignAudio('A2', diskAudio('kick.wav'))
     const wrapper = mount(PadButton, { props: { pad: padFor('A2') } })
 
-    ui.proposeDrop('A1', 0, [diskAudio('one.wav'), diskAudio('two.wav')])
+    await ui.dropAudio('A1', 0, [diskAudio('one.wav'), diskAudio('two.wav')])
     ui.previewDrop('overwrite')
     await wrapper.vm.$nextTick()
 

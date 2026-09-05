@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
-import { type AudioRef, numberInBank, type Pad } from '@/domain/pad'
+import { numberInBank, type Pad } from '@/domain/pad'
 
 const CHANGE_LABELS = {
   settings: 'settings changed',
@@ -59,26 +59,11 @@ function handleDrop(): void {
   ui.endDrag()
 
   if (payload?.source === 'audio') {
-    dropAudio(payload.audio)
+    void ui.dropAudio(props.pad.id, props.pad.slot, payload.audio)
   } else if (payload?.source === 'pad') {
     pads.swapPads(props.pad.id, payload.padId)
     ui.selectPad(props.pad.id)
   }
-}
-
-function dropAudio(sources: AudioRef[]): void {
-  const [only] = sources
-  if (!only) {
-    return
-  }
-
-  if (sources.length === 1) {
-    pads.assignAudio(props.pad.id, only)
-    ui.selectPad(props.pad.id)
-    return
-  }
-
-  ui.proposeDrop(props.pad.id, props.pad.slot, sources)
 }
 </script>
 

@@ -38,6 +38,7 @@ beforeEach(() => {
   invokeMock.mockReset()
   invokeMock.mockImplementation((command) => {
     if (command === 'audio_peaks') return Promise.resolve(peaks)
+    if (command === 'audio_undecodable') return Promise.resolve([])
     return Promise.resolve(undefined)
   })
 })
@@ -292,6 +293,7 @@ describe('PadWaveform playhead dragging', () => {
     expect(wrapper.classes()).toContain('is-drop-target')
 
     await wrapper.trigger('drop')
+    await flushPromises()
 
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('/samples/snare.wav'))
     expect(ui.dragPayload).toBeNull()

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import PadFillPrompt from '@/components/PadFillPrompt.vue'
@@ -6,12 +6,16 @@ import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { diskAudio } from '@/domain/pad'
 
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn<() => Promise<unknown>>(() => Promise.resolve([])),
+}))
+
 const SOURCES = [diskAudio('one.wav'), diskAudio('two.wav')]
 
-function askAboutA1(): void {
+async function askAboutA1(): Promise<void> {
   const pads = usePadsStore()
   pads.assignAudio('A2', diskAudio('kick.wav'))
-  useUiStore().proposeDrop('A1', 0, SOURCES)
+  await useUiStore().dropAudio('A1', 0, SOURCES)
 }
 
 describe('PadFillPrompt', () => {
@@ -28,7 +32,7 @@ describe('PadFillPrompt', () => {
   it('counts the pads that are in the way', async () => {
     const wrapper = mount(PadFillPrompt)
 
-    askAboutA1()
+    await askAboutA1()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.get('.headline').text()).toBe('2 files from A1 — 1 pad already holds a sample.')
@@ -37,7 +41,7 @@ describe('PadFillPrompt', () => {
   it('walks around them when told to skip', async () => {
     const pads = usePadsStore()
     const wrapper = mount(PadFillPrompt)
-    askAboutA1()
+    await askAboutA1()
     await wrapper.vm.$nextTick()
 
     await wrapper.get('.action').trigger('click')
@@ -51,7 +55,7 @@ describe('PadFillPrompt', () => {
   it('lays them over the pads when told to overwrite', async () => {
     const pads = usePadsStore()
     const wrapper = mount(PadFillPrompt)
-    askAboutA1()
+    await askAboutA1()
     await wrapper.vm.$nextTick()
 
     await wrapper.get('.is-destructive').trigger('click')
@@ -64,7 +68,7 @@ describe('PadFillPrompt', () => {
   it('leaves the card alone when cancelled', async () => {
     const pads = usePadsStore()
     const wrapper = mount(PadFillPrompt)
-    askAboutA1()
+    await askAboutA1()
     await wrapper.vm.$nextTick()
 
     await wrapper.findAll('.action')[2]?.trigger('click')
@@ -77,7 +81,7 @@ describe('PadFillPrompt', () => {
   it('shows what overwriting would take while the option is under the pointer', async () => {
     const ui = useUiStore()
     const wrapper = mount(PadFillPrompt)
-    askAboutA1()
+    await askAboutA1()
     await wrapper.vm.$nextTick()
 
     expect(ui.fillOrdinalById).toEqual({ A1: 1, A3: 2 })

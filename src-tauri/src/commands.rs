@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::audio::cache;
+use crate::audio::decode::AudioSource;
 use crate::audio::peaks::{self, Peaks};
 use crate::audio::play::{PlayRequest, PlaybackEvents, Player};
 use crate::card::{CardPresence, CardState};
@@ -224,6 +225,31 @@ pub fn apply_window_theme(app: &AppHandle, theme: Theme) {
     for window in app.webview_windows().values() {
         let _ = window.set_theme(native);
     }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndecodableFile {
+    pub path: PathBuf,
+    pub reason: String,
+}
+
+#[tauri::command(async)]
+pub fn audio_undecodable(state: State<'_, AppState>, paths: Vec<PathBuf>) -> Vec<UndecodableFile> {
+    let scopes = state.scopes();
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let refused = scopes
+                .readable(&path)
+                .and_then(|resolved| AudioSource::open(&resolved))
+                .err()?;
+            Some(UndecodableFile {
+                path,
+                reason: refused.to_string(),
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, serde::Serialize)]

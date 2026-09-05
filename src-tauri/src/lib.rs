@@ -64,6 +64,7 @@ pub fn run() {
             commands::journal_read,
             commands::journal_clear,
             commands::audio_peaks,
+            commands::audio_undecodable,
             commands::audio_play,
             commands::audio_stop,
             commands::audio_set_gain,
