@@ -197,7 +197,8 @@ describe('fileBrowser store', () => {
     expect(invokeMock).toHaveBeenCalledWith('config_remove_folder', { id: 'f1' })
     expect(browser.roots).toHaveLength(0)
     expect(browser.childrenOf('/samples')).toEqual([])
-    expect(browser.selectedFilePath).toBeNull()
+    expect(browser.previewPath).toBeNull()
+    expect(browser.selectedPaths).toEqual([])
   })
 
   it('surfaces a failure from the backend', async () => {
@@ -444,7 +445,8 @@ describe('fileBrowser store', () => {
     tree['/samples'] = [entry('/samples/drums', true)]
     await browser.refreshIndex()
 
-    expect(browser.selectedFilePath).toBeNull()
+    expect(browser.previewPath).toBeNull()
+    expect(browser.selectedPaths).toEqual([])
   })
 
   it('keeps the selected file when a rescan still lists it', async () => {
@@ -454,6 +456,106 @@ describe('fileBrowser store', () => {
 
     await browser.refreshIndex()
 
-    expect(browser.selectedFilePath).toBe('/samples/kick.wav')
+    expect(browser.previewPath).toBe('/samples/kick.wav')
+    expect(browser.selectedPaths).toEqual(['/samples/kick.wav'])
+  })
+})
+
+describe('the file selection', () => {
+  const SNARE = '/samples/drums/snare.aif'
+  const KICK = '/samples/kick.wav'
+
+  async function openTree(): Promise<ReturnType<typeof useFileBrowserStore>> {
+    const browser = useFileBrowserStore()
+    await browser.addRoot()
+    await browser.toggleDirectory('/samples/drums')
+    return browser
+  }
+
+  it('holds one file at a time on a plain click', async () => {
+    const browser = await openTree()
+
+    browser.selectFile(SNARE)
+    browser.selectFile(KICK)
+
+    expect(browser.selectedPaths).toEqual([KICK])
+    expect(browser.previewPath).toBe(KICK)
+  })
+
+  it('adds a toggled file in the order the tree shows it', async () => {
+    const browser = await openTree()
+
+    browser.selectFile(KICK)
+    browser.toggleFile(SNARE)
+
+    expect(browser.selectedPaths).toEqual([SNARE, KICK])
+    expect(browser.previewPath).toBe(SNARE)
+  })
+
+  it('drops a file that is toggled again and previews what is left', async () => {
+    const browser = await openTree()
+
+    browser.selectFile(KICK)
+    browser.toggleFile(SNARE)
+    browser.toggleFile(SNARE)
+
+    expect(browser.selectedPaths).toEqual([KICK])
+    expect(browser.previewPath).toBe(KICK)
+  })
+
+  it('takes the range between the preview and the shift-clicked file', async () => {
+    const browser = await openTree()
+
+    browser.selectFile(SNARE)
+    browser.extendSelection(KICK)
+
+    expect(browser.selectedPaths).toEqual([SNARE, KICK])
+    expect(browser.previewPath).toBe(SNARE)
+  })
+
+  it('leaves the folders out of a range', async () => {
+    const browser = await openTree()
+
+    browser.selectFile(KICK)
+    browser.extendSelection(SNARE)
+
+    expect(browser.selectedPaths).toEqual([SNARE, KICK])
+  })
+
+  it('lets go of the files a collapsed folder took away', async () => {
+    const browser = await openTree()
+    browser.selectFile(SNARE)
+    browser.extendSelection(KICK)
+
+    await browser.toggleDirectory('/samples/drums')
+
+    expect(browser.selectedPaths).toEqual([KICK])
+    expect(browser.previewPath).toBe(KICK)
+  })
+
+  it('drags the whole selection from a file inside it', async () => {
+    const browser = await openTree()
+    browser.selectFile(SNARE)
+    browser.extendSelection(KICK)
+
+    expect(browser.dragPaths(KICK)).toEqual([SNARE, KICK])
+  })
+
+  it('drags only the file that was not part of the selection', async () => {
+    const browser = await openTree()
+    browser.selectFile(SNARE)
+
+    expect(browser.dragPaths(KICK)).toEqual([KICK])
+    expect(browser.selectedPaths).toEqual([KICK])
+  })
+
+  it('starts over when a search replaces the tree', async () => {
+    const browser = await openTree()
+    browser.selectFile(KICK)
+
+    await search(browser, 'snare')
+
+    expect(browser.selectedPaths).toEqual([])
+    expect(browser.previewPath).toBeNull()
   })
 })

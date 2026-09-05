@@ -150,11 +150,11 @@ test('captures the README screenshots', async ({ page }) => {
     `,
   })
 
-  await page.getByRole('button', { name: 'Samples', exact: true }).click()
-  await page.getByRole('button', { name: 'Drums' }).click()
-  await page.getByRole('button', { name: 'one shots' }).click()
-  await expect(page.getByRole('button', { name: KIT_FILES[2] })).toBeVisible()
-  await page.getByRole('button', { name: KIT_FILES[2] }).click()
+  await page.getByRole('treeitem', { name: 'Samples', exact: true }).click()
+  await page.getByRole('treeitem', { name: 'Drums' }).click()
+  await page.getByRole('treeitem', { name: 'one shots' }).click()
+  await expect(page.getByRole('treeitem', { name: KIT_FILES[2] })).toBeVisible()
+  await page.getByRole('treeitem', { name: KIT_FILES[2] }).click()
 
   for (const [index, pad] of PREPARED_PADS.entries()) {
     await page.dragAndDrop(`button[title="${KIT_FILES[index]}"]`, `button[aria-label="Pad ${pad}"]`)

@@ -93,3 +93,92 @@ describe('PadButton', () => {
     expect(wrapper.get('button').attributes('aria-label')).toBe('Pad A1, sample replaced')
   })
 })
+
+describe('PadButton with several files', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('replaces the pad under a single dragged file', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.assignAudio('A1', diskAudio('kick.wav'))
+    const wrapper = mount(PadButton, { props: { pad: padFor('A1') } })
+
+    ui.startDrag({ source: 'audio', audio: [diskAudio('snare.wav')] })
+    await wrapper.get('button').trigger('drop')
+
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('snare.wav'))
+    expect(ui.selectedPadId).toBe('A1')
+  })
+
+  it('fills the free pads from the drop onwards without asking', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    const wrapper = mount(PadButton, { props: { pad: padFor('A1') } })
+
+    ui.startDrag({
+      source: 'audio',
+      audio: [diskAudio('one.wav'), diskAudio('two.wav')],
+    })
+    await wrapper.get('button').trigger('drop')
+
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
+    expect(pads.padById('A2')?.audio).toEqual(diskAudio('two.wav'))
+    expect(ui.pendingDrop).toBeNull()
+    expect(ui.selectedPadId).toBe('A1')
+  })
+
+  it('touches nothing until the pads in the way are answered for', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.assignAudio('A2', diskAudio('kick.wav'))
+    const wrapper = mount(PadButton, { props: { pad: padFor('A1') } })
+
+    ui.startDrag({ source: 'audio', audio: [diskAudio('one.wav'), diskAudio('two.wav')] })
+    await wrapper.get('button').trigger('drop')
+
+    expect(ui.pendingDrop?.inTheWay).toBe(1)
+    expect(pads.padById('A1')?.audio).toBeNull()
+    expect(pads.padById('A2')?.audio).toEqual(diskAudio('kick.wav'))
+  })
+
+  it('marks a pad the prompt offers to overwrite', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.assignAudio('A2', diskAudio('kick.wav'))
+    const wrapper = mount(PadButton, { props: { pad: padFor('A2') } })
+
+    ui.proposeDrop('A1', 0, [diskAudio('one.wav'), diskAudio('two.wav')])
+    ui.previewDrop('overwrite')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('button').attributes('data-fill')).toBe('overwrite')
+    expect(wrapper.get('.fill-ordinal').text()).toBe('2')
+  })
+
+  it('shows which track it would take while the drag is over another pad', async () => {
+    const ui = useUiStore()
+    const wrapper = mount(PadButton, { props: { pad: padFor('A2') } })
+
+    ui.startDrag({ source: 'audio', audio: [diskAudio('one.wav'), diskAudio('two.wav')] })
+    ui.dragOverPad('A1')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('button').attributes('data-fill')).toBe('target')
+    expect(wrapper.get('.fill-ordinal').text()).toBe('2')
+  })
+
+  it('drops the preview once the drag is over', async () => {
+    const ui = useUiStore()
+    const wrapper = mount(PadButton, { props: { pad: padFor('A2') } })
+
+    ui.startDrag({ source: 'audio', audio: [diskAudio('one.wav'), diskAudio('two.wav')] })
+    ui.dragOverPad('A1')
+    await wrapper.vm.$nextTick()
+    ui.endDrag()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.fill-ordinal').exists()).toBe(false)
+  })
+})

@@ -8,6 +8,7 @@ import PadParameters from '@/components/PadParameters.vue'
 import PadWaveform from '@/components/PadWaveform.vue'
 import ReconciliationBanner from '@/components/ReconciliationBanner.vue'
 import RecoveryBanner from '@/components/RecoveryBanner.vue'
+import PadFillPrompt from '@/components/PadFillPrompt.vue'
 import SyncPreview from '@/components/SyncPreview.vue'
 import { onMounted, onUnmounted } from 'vue'
 import { useCardStore } from '@/stores/card'
@@ -66,6 +67,7 @@ onUnmounted(() => {
     </main>
     <BottomBar />
     <SyncPreview />
+    <PadFillPrompt />
   </div>
 </template>
 

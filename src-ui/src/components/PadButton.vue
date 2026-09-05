@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
-import { numberInBank, type Pad } from '@/domain/pad'
+import { type AudioRef, numberInBank, type Pad } from '@/domain/pad'
 
 const CHANGE_LABELS = {
   settings: 'settings changed',
@@ -29,6 +29,15 @@ const state = computed(() => {
   return change.value ? 'pending' : 'empty'
 })
 
+const fillOrdinal = computed<number | null>(() => ui.fillOrdinalById[props.pad.id] ?? null)
+
+const fillState = computed(() => {
+  if (!fillOrdinal.value) {
+    return undefined
+  }
+  return hasAudio.value ? 'overwrite' : 'target'
+})
+
 const padLabel = computed(() => {
   const status = change.value?.status
   return status ? `Pad ${props.pad.id}, ${CHANGE_LABELS[status]}` : `Pad ${props.pad.id}`
@@ -50,14 +59,26 @@ function handleDrop(): void {
   ui.endDrag()
 
   if (payload?.source === 'audio') {
-    pads.assignAudio(props.pad.id, payload.audio)
+    dropAudio(payload.audio)
   } else if (payload?.source === 'pad') {
     pads.swapPads(props.pad.id, payload.padId)
-  } else {
+    ui.selectPad(props.pad.id)
+  }
+}
+
+function dropAudio(sources: AudioRef[]): void {
+  const [only] = sources
+  if (!only) {
     return
   }
 
-  ui.selectPad(props.pad.id)
+  if (sources.length === 1) {
+    pads.assignAudio(props.pad.id, only)
+    ui.selectPad(props.pad.id)
+    return
+  }
+
+  ui.proposeDrop(props.pad.id, props.pad.slot, sources)
 }
 </script>
 
@@ -68,6 +89,7 @@ function handleDrop(): void {
     :class="{ 'is-selected': isSelected }"
     :data-state="state"
     :data-change="change?.status"
+    :data-fill="fillState"
     :aria-label="padLabel"
     :title="padLabel"
     :aria-pressed="isSelected"
@@ -76,10 +98,12 @@ function handleDrop(): void {
     @keydown="handleClearKey"
     @dragstart="handleDragStart"
     @dragend="ui.endDrag()"
-    @dragover.prevent
+    @dragover.prevent="ui.dragOverPad(pad.id)"
+    @dragleave="ui.dragOutOfPad(pad.id)"
     @drop.prevent="handleDrop"
   >
     <span class="pad-number">{{ label }}</span>
+    <span v-if="fillOrdinal" class="fill-ordinal">{{ fillOrdinal }}</span>
   </button>
 </template>
 
@@ -108,6 +132,20 @@ function handleDrop(): void {
 
 .pad-number {
   font-size: 40cqh;
+}
+
+.pad-number,
+.fill-ordinal {
+  pointer-events: none;
+}
+
+.fill-ordinal {
+  position: absolute;
+  right: 6cqw;
+  bottom: 4cqh;
+  font-size: 26cqh;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-strong);
 }
 
 .pad:hover {
@@ -149,6 +187,23 @@ function handleDrop(): void {
 
 .pad.is-selected:hover {
   background-color: var(--pad-selected-surface-hover);
+}
+
+.pad[data-fill='target'] {
+  color: var(--accent-strong);
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+  border-style: dashed;
+}
+
+.pad[data-fill='overwrite'] {
+  color: var(--status-danger);
+  border-color: var(--status-danger);
+  border-style: dashed;
+}
+
+.pad[data-fill='overwrite'] .fill-ordinal {
+  color: var(--status-danger);
 }
 
 .pad:focus-visible {

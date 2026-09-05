@@ -118,3 +118,23 @@ describe('FilePreview', () => {
     expect(wrapper.get('.track').attributes('style')).toContain('--fraction: 0.25')
   })
 })
+
+describe('FilePreview while the next file is read', () => {
+  it('keeps the transport and the track in place', async () => {
+    const browser = useFileBrowserStore()
+    const wrapper = await mountWithSelectedFile()
+
+    browser.selectFile('/samples/other.wav')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.track').exists()).toBe(true)
+    expect(wrapper.get('.file-name').text()).toBe('other.wav')
+    expect(wrapper.get('.clock').text()).toBe('reading…')
+    expect(wrapper.get('.transport').attributes('disabled')).toBeDefined()
+
+    await flushPromises()
+
+    expect(wrapper.get('.clock').text()).toBe('0:00 / 0:02')
+    expect(wrapper.get('.transport').attributes('disabled')).toBeUndefined()
+  })
+})

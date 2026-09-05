@@ -11,7 +11,7 @@ const browser = useFileBrowserStore()
       {{
         browser.roots.length === 0
           ? 'Add an audio folder on the left, then drag a file onto this pad.'
-          : 'Drag a file from the folder tree onto this pad.'
+          : 'Drag one or more files from the folder tree onto this pad.'
       }}
     </span>
   </div>

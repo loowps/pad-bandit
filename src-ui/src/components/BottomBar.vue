@@ -41,6 +41,18 @@ const orphanLabel = computed(() => {
 
 const showsPortability = computed(() => projects.isNamed || pads.hasPreparedPads)
 
+const fillLabel = computed(() => {
+  const outcome = pads.lastFill
+  if (!outcome) {
+    return ''
+  }
+  const verb = outcome.mode === 'overwrite' ? 'Overwrote' : 'Filled'
+  const missed = outcome.requested - outcome.filled
+  return missed > 0
+    ? `${verb} ${outcome.filled} of ${outcome.requested} pads — ${missed} did not fit`
+    : `${verb} ${outcome.filled} pads`
+})
+
 const presenceLabel = computed(() => {
   if (card.presence === 'missing') {
     return 'Card removed — the plan cannot be applied'
@@ -97,6 +109,19 @@ const presenceLabel = computed(() => {
       </li>
     </ul>
 
+    <div v-if="pads.lastFill" class="fill">
+      <span>{{ fillLabel }}</span>
+      <button type="button" class="undo" @click="pads.undoFill()">Undo</button>
+      <button
+        type="button"
+        class="dismiss"
+        aria-label="Dismiss fill result"
+        @click="pads.forgetFill()"
+      >
+        ✕
+      </button>
+    </div>
+
     <div class="actions">
       <span v-if="presenceLabel" class="orphans">{{ presenceLabel }}</span>
       <span v-else-if="projects.hasOrphans" class="orphans" :title="orphanLabel">{{
@@ -135,9 +160,42 @@ const presenceLabel = computed(() => {
   border-top: 1px solid var(--panel-border);
 }
 
+.fill {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.375rem;
+  align-items: center;
+  padding-left: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  border-left: 1px solid var(--panel-border);
+  white-space: nowrap;
+}
+
+.undo {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.undo:hover {
+  color: var(--accent-strong);
+}
+
+.undo:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
 .pick,
 .discard,
 .clear,
+.dismiss,
 .sync {
   display: inline-flex;
   flex: 0 0 auto;
@@ -154,7 +212,8 @@ const presenceLabel = computed(() => {
   border-radius: var(--radius-md);
 }
 
-.clear {
+.clear,
+.dismiss {
   justify-content: center;
   width: var(--control-height);
   padding: 0;
@@ -164,11 +223,13 @@ const presenceLabel = computed(() => {
 
 .pick:hover,
 .discard:hover,
-.clear:hover:not(:disabled) {
+.clear:hover:not(:disabled),
+.dismiss:hover {
   border-color: var(--text-subtle);
 }
 
-.clear:hover:not(:disabled) {
+.clear:hover:not(:disabled),
+.dismiss:hover {
   color: var(--text-default);
   background: var(--control-track);
 }
@@ -182,6 +243,7 @@ const presenceLabel = computed(() => {
 .pick:focus-visible,
 .discard:focus-visible,
 .clear:focus-visible,
+.dismiss:focus-visible,
 .card-chip:focus-visible,
 .sync:focus-visible {
   outline: 2px solid var(--focus-ring);
