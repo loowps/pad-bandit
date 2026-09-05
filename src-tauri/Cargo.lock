@@ -2632,6 +2632,7 @@ name = "pad-bandit-tauri"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "libc",
  "rtrb",
  "rubato",
  "serde",

@@ -34,3 +34,6 @@ symphonia = { version = "0.6.1", features = [
 
 [dev-dependencies]
 tempfile = "3"
+
+[target."cfg(unix)".dependencies]
+libc = "0.2.189"
