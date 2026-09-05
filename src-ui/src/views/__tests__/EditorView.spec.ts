@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createPinia } from 'pinia'
+import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import EditorView from '@/views/EditorView.vue'
+import { useSyncStore } from '@/stores/sync'
 import { PAD_COUNT } from '@/domain/pad'
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -21,6 +23,21 @@ describe('EditorView', () => {
     expect(wrapper.findAll('.pad')).toHaveLength(PAD_COUNT)
     expect(wrapper.text()).toContain('Bank A')
     expect(wrapper.text()).toContain('Bank J')
+  })
+
+  it('takes the editor out of reach while a dialog is over it', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const wrapper = mount(EditorView, { global: { plugins: [pinia] } })
+    const editor = wrapper.get('.editor')
+
+    expect(editor.attributes('inert')).toBeUndefined()
+
+    useSyncStore().isOpen = true
+    await nextTick()
+    await nextTick()
+
+    expect(wrapper.get('.editor').attributes('inert')).toBeDefined()
   })
 
   it('composes the editor surfaces around the pad grid', () => {

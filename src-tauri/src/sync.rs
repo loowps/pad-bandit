@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::audio::encode;
-use crate::card::{LoadedCard, PadEdit, PAD_COUNT};
+use crate::card::{LoadedCard, PAD_COUNT, PadEdit};
 use crate::error::Result;
 use crate::paths::Scopes;
 
@@ -119,7 +119,12 @@ pub fn card_fingerprint(card: &LoadedCard) -> String {
     card.state().fingerprint
 }
 
-pub fn preflight(scopes: &Scopes, card: &LoadedCard, plan: &SyncPlan, budget: &Budget) -> Preflight {
+pub fn preflight(
+    scopes: &Scopes,
+    card: &LoadedCard,
+    plan: &SyncPlan,
+    budget: &Budget,
+) -> Preflight {
     let mut problems = Vec::new();
     let mut sizes = Vec::new();
     let mut bytes_to_write = 0u64;
@@ -346,9 +351,11 @@ mod tests {
         }
 
         fn card_sample_size(&self, slot: u8) -> u64 {
-            std::fs::metadata(crate::card::sample_directory(&self.card_root).join(sample_file_name(slot)))
-                .expect("card sample")
-                .len()
+            std::fs::metadata(
+                crate::card::sample_directory(&self.card_root).join(sample_file_name(slot)),
+            )
+            .expect("card sample")
+            .len()
         }
 
         fn plan(&self, slots: Vec<PlannedSlot>) -> SyncPlan {
@@ -375,7 +382,13 @@ mod tests {
         let report = preflight(&f.scopes, &f.card(), &plan, &Budget::on(1 << 30));
 
         assert!(report.ok(), "{:?}", report.problems);
-        assert_eq!(report.sizes, vec![SizedSlot { slot: 5, bytes: 512 + 4_000 }]);
+        assert_eq!(
+            report.sizes,
+            vec![SizedSlot {
+                slot: 5,
+                bytes: 512 + 4_000
+            }]
+        );
         assert_eq!(report.bytes_to_write, 512 + 4_000);
         assert_eq!(report.bytes_to_free, 0);
     }
@@ -448,7 +461,10 @@ mod tests {
 
         assert!(matches!(
             report.problems.first(),
-            Some(Problem::NotEnoughRoom { available: 1_000, .. })
+            Some(Problem::NotEnoughRoom {
+                available: 1_000,
+                ..
+            })
         ));
     }
 
@@ -459,7 +475,10 @@ mod tests {
 
         let report = preflight(&f.scopes, &f.card(), &plan, &Budget::on(FREE_SPACE_MARGIN));
 
-        assert!(report.bytes_to_write < report.bytes_to_free, "the replacement must be smaller");
+        assert!(
+            report.bytes_to_write < report.bytes_to_free,
+            "the replacement must be smaller"
+        );
         assert!(report.ok(), "{:?}", report.problems);
     }
 

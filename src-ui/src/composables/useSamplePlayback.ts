@@ -141,7 +141,9 @@ export function useSamplePlayback(onFinished: () => void, onError: (message: str
     }
     gainTimer = setTimeout(() => {
       gainTimer = null
-      void setAudioGain(volume)
+      setAudioGain(volume).catch((cause: unknown) =>
+        onError(cause instanceof Error ? cause.message : String(cause)),
+      )
     }, GAIN_DEBOUNCE_MS)
   }
 

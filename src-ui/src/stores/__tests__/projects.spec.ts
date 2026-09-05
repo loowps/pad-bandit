@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { usePadsStore } from '@/stores/pads'
+import { useNoticesStore } from '@/stores/notices'
 import { useProjectsStore } from '@/stores/projects'
 import { diskAudio, PAD_COUNT } from '@/domain/pad'
 import type { CardSlot, CardState } from '@/card'
@@ -214,7 +215,9 @@ describe('projects store', () => {
     expect(pads.padById('A3')?.settings.volume).toBe(40)
     expect(pads.changeFor('A3')?.status).toBe('added')
     expect(projects.hasOrphans).toBe(false)
-    expect(projects.summary).toMatchObject({ resolved: 1, moved: 0, missing: 0 })
+    expect(
+      useNoticesStore().entries.find((entry) => entry.source === 'project:reopened'),
+    ).toMatchObject({ severity: 'info', detail: expect.stringContaining('1 resolved') })
   })
 
   it('reports a project that cannot be opened instead of throwing', async () => {
@@ -223,7 +226,11 @@ describe('projects store', () => {
 
     expect(await projects.open('D:\\Sets\\absent.padbandit')).toBe(false)
 
-    expect(projects.error).toContain('absent')
+    expect(useNoticesStore().entries[0]).toMatchObject({
+      severity: 'error',
+      title: 'The project could not be opened',
+      detail: expect.stringContaining('absent'),
+    })
   })
 
   it('journals pending work with the file it belongs to', async () => {

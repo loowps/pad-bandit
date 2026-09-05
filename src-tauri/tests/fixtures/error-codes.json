@@ -1,0 +1,20 @@
+[
+  "audio",
+  "cardChanged",
+  "io",
+  "noCardSelected",
+  "notACard",
+  "notADirectory",
+  "outsideReadableScope",
+  "outsideWritableScope",
+  "padInfoTooShort",
+  "serde",
+  "syncInProgress",
+  "ungrantedFile",
+  "unknownFolder",
+  "unknownSlot",
+  "unnamedProject",
+  "unresolvablePath",
+  "unsupportedProjectVersion",
+  "window"
+]

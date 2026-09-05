@@ -211,6 +211,19 @@ describe('sync store', () => {
     expect(sync.report).toBeNull()
   })
 
+  it('says a refusal in the app’s own words, not the backend’s', async () => {
+    editedCard()
+    invokeMock.mockRejectedValueOnce({
+      code: 'cardChanged',
+      message: 'the card changed since this plan was built',
+    })
+    const sync = useSyncStore()
+
+    expect(await sync.check()).toBeNull()
+
+    expect(sync.error).toBe('The card changed since it was read. Read it again.')
+  })
+
   it('closing the preview drops the report so it cannot go stale', async () => {
     editedCard()
     const sync = useSyncStore()

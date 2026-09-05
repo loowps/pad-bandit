@@ -11,6 +11,7 @@ import {
   onIndexChanged,
   type SampleHit,
 } from '@/filesystem'
+import { explain } from '@/domain/errors'
 
 const SEARCH_DEBOUNCE_MS = 200
 
@@ -32,13 +33,6 @@ function rootNode(folder: BrowseFolder): FsNode {
 
 function browsable(children: FsNode[]): FsNode[] {
   return children.filter((child) => child.isDirectory || child.isAudio)
-}
-
-function messageOf(cause: unknown, fallback: string): string {
-  if (cause instanceof Error) {
-    return cause.message
-  }
-  return typeof cause === 'string' ? cause : fallback
 }
 
 export const useFileBrowserStore = defineStore('fileBrowser', () => {
@@ -129,7 +123,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
         [directoryPath]: browsable(children),
       }
     } catch (cause) {
-      failedPaths.value.set(directoryPath, messageOf(cause, 'Could not read that folder.'))
+      failedPaths.value.set(directoryPath, explain(cause, 'Could not read that folder.'))
       expandedPaths.value.delete(directoryPath)
     } finally {
       loadingPaths.value.delete(directoryPath)
@@ -170,7 +164,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       if (ticket === latestSearch) {
         hits.value = []
         truncated.value = false
-        error.value = messageOf(cause, 'Could not search those folders.')
+        error.value = explain(cause, 'Could not search those folders.')
       }
     } finally {
       if (ticket === latestSearch) {
@@ -213,7 +207,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       try {
         reread[directoryPath] = browsable(await gateway.listChildren(directoryPath))
       } catch (cause) {
-        failures.set(directoryPath, messageOf(cause, 'Could not read that folder.'))
+        failures.set(directoryPath, explain(cause, 'Could not read that folder.'))
       }
     }
 
@@ -237,7 +231,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       await getFileSystemGateway().refreshIndex()
     } catch (cause) {
       isIndexing.value = false
-      error.value = messageOf(cause, 'Could not rebuild the sample index.')
+      error.value = explain(cause, 'Could not rebuild the sample index.')
       return
     }
 
@@ -249,7 +243,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     try {
       folders.value = (await getConfig()).browseFolders
     } catch (cause) {
-      error.value = messageOf(cause, 'Could not read the saved folders.')
+      error.value = explain(cause, 'Could not read the saved folders.')
     }
 
     await readIndexState()
@@ -269,7 +263,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       folders.value = (await addBrowseFolder(picked)).browseFolders
       await toggleDirectory(picked)
     } catch (cause) {
-      error.value = messageOf(cause, 'Could not open that folder.')
+      error.value = explain(cause, 'Could not open that folder.')
     }
   }
 
@@ -283,7 +277,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     try {
       folders.value = (await removeBrowseFolder(folderId)).browseFolders
     } catch (cause) {
-      error.value = messageOf(cause, 'Could not remove that folder.')
+      error.value = explain(cause, 'Could not remove that folder.')
       return
     }
 

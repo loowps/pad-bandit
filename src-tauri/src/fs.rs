@@ -195,7 +195,14 @@ mod tests {
 
         assert_eq!(
             audio,
-            ["break.aiff", "kick.WAV", "loop.mp3", "pad.flac", "snare.aif", "voice.ogg"]
+            [
+                "break.aiff",
+                "kick.WAV",
+                "loop.mp3",
+                "pad.flac",
+                "snare.aif",
+                "voice.ogg"
+            ]
         );
     }
 

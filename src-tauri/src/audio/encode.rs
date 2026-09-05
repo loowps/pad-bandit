@@ -81,7 +81,13 @@ pub fn encode_to_card(source: &Path, destination: &Path, slot: u8) -> Result<Car
 
     while let Some((_, block)) = reader.next_block()? {
         downmix(block, spec.channels, channels, &mut mixed);
-        frames += write_samples(&mut writer, &mut converter, &mixed, &mut resampled, channels)?;
+        frames += write_samples(
+            &mut writer,
+            &mut converter,
+            &mixed,
+            &mut resampled,
+            channels,
+        )?;
     }
 
     if let Some(converter) = converter.as_mut() {
@@ -93,7 +99,10 @@ pub fn encode_to_card(source: &Path, destination: &Path, slot: u8) -> Result<Car
     let sample = CardSample::of(channels, frames, spec.sample_rate);
     write_header(&mut writer, slot, &sample)?;
     writer.flush()?;
-    writer.into_inner().map_err(|error| Error::Audio(error.to_string()))?.sync_all()?;
+    writer
+        .into_inner()
+        .map_err(|error| Error::Audio(error.to_string()))?
+        .sync_all()?;
 
     Ok(sample)
 }
@@ -246,7 +255,11 @@ mod tests {
         let encoded = encode_silence(CARD_SAMPLE_RATE, 2, 1_000, 0);
 
         assert_eq!(encoded.bytes[20..38], GOLDEN_HEADER[20..38], "fmt body");
-        assert_eq!(encoded.bytes[38..62], GOLDEN_HEADER[38..62], "Roland chunk and index");
+        assert_eq!(
+            encoded.bytes[38..62],
+            GOLDEN_HEADER[38..62],
+            "Roland chunk and index"
+        );
         assert_eq!(encoded.bytes[62..504], GOLDEN_HEADER[62..504], "padding");
         assert_eq!(encoded.bytes[504..508], GOLDEN_HEADER[504..508]);
     }
@@ -301,7 +314,11 @@ mod tests {
 
         assert_eq!(le_u32(&encoded.bytes, 24), CARD_SAMPLE_RATE);
         let drift = encoded.sample.frames.abs_diff(u64::from(CARD_SAMPLE_RATE));
-        assert!(drift < 2_000, "{} frames is not near 44100", encoded.sample.frames);
+        assert!(
+            drift < 2_000,
+            "{} frames is not near 44100",
+            encoded.sample.frames
+        );
     }
 
     #[test]

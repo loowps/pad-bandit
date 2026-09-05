@@ -214,7 +214,6 @@ impl Indexes {
 
         search(&ready, query, limit)
     }
-
 }
 
 #[cfg(test)]

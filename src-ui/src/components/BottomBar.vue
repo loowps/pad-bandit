@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import NoticeCenter from '@/components/NoticeCenter.vue'
 import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
 import { useProjectsStore } from '@/stores/projects'
 import { useSyncStore } from '@/stores/sync'
-import { useUiStore } from '@/stores/ui'
 import type { PadChangeStatus } from '@/domain/plan'
 
 const WORK_LABELS: Record<PadChangeStatus, string> = {
@@ -21,7 +21,6 @@ const card = useCardStore()
 const pads = usePadsStore()
 const projects = useProjectsStore()
 const sync = useSyncStore()
-const ui = useUiStore()
 
 const work = computed(() =>
   ORDERED_STATUSES.map((status) => ({
@@ -42,28 +41,6 @@ const orphanLabel = computed(() => {
 })
 
 const showsPortability = computed(() => projects.isNamed || pads.hasPreparedPads)
-
-const fillLabel = computed(() => {
-  const outcome = pads.lastFill
-  if (!outcome) {
-    return ''
-  }
-  const verb = outcome.mode === 'overwrite' ? 'Overwrote' : 'Filled'
-  const missed = outcome.requested - outcome.filled
-  return missed > 0
-    ? `${verb} ${outcome.filled} of ${outcome.requested} pads — ${missed} did not fit`
-    : `${verb} ${outcome.filled} pads`
-})
-
-const refusalLabel = computed(() => {
-  const refused = ui.refusedDrop
-  if (!refused) {
-    return ''
-  }
-  const [only] = refused.names
-  const what = refused.names.length === 1 ? only : `${refused.names.length} files`
-  return `${what} could not be decoded — ${refused.reason}`
-})
 
 const presenceLabel = computed(() => {
   if (card.presence === 'missing') {
@@ -121,38 +98,13 @@ const presenceLabel = computed(() => {
       </li>
     </ul>
 
-    <div v-if="ui.refusedDrop" class="refusal">
-      <span class="reason">{{ refusalLabel }}</span>
-      <button
-        type="button"
-        class="dismiss"
-        aria-label="Dismiss decoding failure"
-        @click="ui.forgetRefusal()"
-      >
-        ✕
-      </button>
-    </div>
-
-    <div v-if="pads.lastFill" class="fill">
-      <span>{{ fillLabel }}</span>
-      <button type="button" class="undo" @click="pads.undoFill()">Undo</button>
-      <button
-        type="button"
-        class="dismiss"
-        aria-label="Dismiss fill result"
-        @click="pads.forgetFill()"
-      >
-        ✕
-      </button>
-    </div>
-
     <div class="actions">
       <span v-if="presenceLabel" class="orphans">{{ presenceLabel }}</span>
       <span v-else-if="projects.hasOrphans" class="orphans" :title="orphanLabel">{{
         orphanLabel
       }}</span>
-      <span v-else-if="projects.error" class="orphans">{{ projects.error }}</span>
       <span v-else-if="showsPortability" class="portability">{{ portabilityLabel }}</span>
+      <NoticeCenter />
       <button
         v-if="pads.hasPreparedPads"
         type="button"
@@ -184,50 +136,9 @@ const presenceLabel = computed(() => {
   border-top: 1px solid var(--panel-border);
 }
 
-.fill,
-.refusal {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 0.375rem;
-  align-items: center;
-  padding-left: 0.75rem;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  border-left: 1px solid var(--panel-border);
-  white-space: nowrap;
-}
-
-.reason {
-  overflow: hidden;
-  max-width: 28rem;
-  color: var(--status-danger);
-  text-overflow: ellipsis;
-}
-
-.undo {
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--accent);
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-  padding: 0;
-}
-
-.undo:hover {
-  color: var(--accent-strong);
-}
-
-.undo:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
-
 .pick,
 .discard,
 .clear,
-.dismiss,
 .sync {
   display: inline-flex;
   flex: 0 0 auto;
@@ -244,8 +155,7 @@ const presenceLabel = computed(() => {
   border-radius: var(--radius-md);
 }
 
-.clear,
-.dismiss {
+.clear {
   justify-content: center;
   width: var(--control-height);
   padding: 0;
@@ -255,13 +165,11 @@ const presenceLabel = computed(() => {
 
 .pick:hover,
 .discard:hover,
-.clear:hover:not(:disabled),
-.dismiss:hover {
+.clear:hover:not(:disabled) {
   border-color: var(--text-subtle);
 }
 
-.clear:hover:not(:disabled),
-.dismiss:hover {
+.clear:hover:not(:disabled) {
   color: var(--text-default);
   background: var(--control-track);
 }
@@ -275,7 +183,6 @@ const presenceLabel = computed(() => {
 .pick:focus-visible,
 .discard:focus-visible,
 .clear:focus-visible,
-.dismiss:focus-visible,
 .card-chip:focus-visible,
 .sync:focus-visible {
   outline: 2px solid var(--focus-ring);

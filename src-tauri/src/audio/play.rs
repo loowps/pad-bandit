@@ -358,7 +358,14 @@ fn source_frame_at(active: &Active, consumed: u64) -> Option<u64> {
         .iter()
         .rev()
         .find(|(output_frame, _)| *output_frame <= consumed)
-        .map(|mark| interpolated(*mark, consumed, active.source_per_output, active.reader.region()))
+        .map(|mark| {
+            interpolated(
+                *mark,
+                consumed,
+                active.source_per_output,
+                active.reader.region(),
+            )
+        })
 }
 
 fn open_output() -> Result<Output> {
@@ -455,7 +462,12 @@ struct Drain {
 }
 
 impl Drain {
-    fn new(consumer: Consumer<f32>, shared: Arc<Shared>, channels: usize, sample_rate: u32) -> Self {
+    fn new(
+        consumer: Consumer<f32>,
+        shared: Arc<Shared>,
+        channels: usize,
+        sample_rate: u32,
+    ) -> Self {
         Self {
             consumer,
             shared,
@@ -567,7 +579,11 @@ mod tests {
         let mut output = [0.0f32; 64];
         drain.fill(&mut output);
 
-        assert!(output[0] < 0.05, "opened at {} rather than fading in", output[0]);
+        assert!(
+            output[0] < 0.05,
+            "opened at {} rather than fading in",
+            output[0]
+        );
         for pair in output.windows(2) {
             assert!(pair[1] >= pair[0], "the fade is not monotonic");
         }

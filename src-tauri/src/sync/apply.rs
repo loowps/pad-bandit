@@ -122,7 +122,14 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
         .iter()
         .partition(|planned| matches!(planned.action, PlannedAction::Move { .. }));
 
-    rename_moved_samples(context, &samples, &moves, &mut records, &mut state, &mut outcome)?;
+    rename_moved_samples(
+        context,
+        &samples,
+        &moves,
+        &mut records,
+        &mut state,
+        &mut outcome,
+    )?;
 
     for planned in rest {
         if cancelled(&context.cancel) {
@@ -341,11 +348,7 @@ fn write_pad_info(
     Ok(())
 }
 
-fn verify(
-    scopes: &Scopes,
-    card_root: &Path,
-    records: &BTreeMap<u8, PadRecord>,
-) -> Result<bool> {
+fn verify(scopes: &Scopes, card_root: &Path, records: &BTreeMap<u8, PadRecord>) -> Result<bool> {
     let reread = card::read_card(scopes, card_root)?;
     Ok(records
         .iter()
@@ -676,7 +679,11 @@ mod tests {
 
         let now_at_one = std::fs::read(f.samples.join(sample_file_name(1))).expect("read");
         assert_eq!(now_at_one.len(), first.len());
-        assert_eq!(now_at_one[512..], first[512..], "the audio itself is untouched");
+        assert_eq!(
+            now_at_one[512..],
+            first[512..],
+            "the audio itself is untouched"
+        );
         assert_eq!(f.strays(), 0);
     }
 

@@ -115,6 +115,11 @@ async function waveformDrawn(page: Page): Promise<void> {
   })
 }
 
+async function nothingToReport(page: Page): Promise<void> {
+  await expect(page.getByRole('status', { name: 'Recent messages' })).toBeEmpty()
+  await expect(page.getByRole('button', { name: /messages/ })).toBeHidden()
+}
+
 async function painted(page: Page): Promise<void> {
   await page.evaluate(async () => {
     await document.fonts.ready
@@ -164,6 +169,7 @@ test('captures the README screenshots', async ({ page }) => {
   await page.getByRole('button', { name: 'Pad D6', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Selected pad' })).toContainText('Pad D6')
   await waveformDrawn(page)
+  await nothingToReport(page)
   await painted(page)
 
   await page.screenshot({ path: path.join(REPO_ROOT, 'screenshot.png') })

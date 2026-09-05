@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import PadFillPrompt from '@/components/PadFillPrompt.vue'
+import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { diskAudio } from '@/domain/pad'
@@ -62,7 +63,7 @@ describe('PadFillPrompt', () => {
 
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
     expect(pads.padById('A2')?.audio).toEqual(diskAudio('two.wav'))
-    expect(pads.lastFill).toEqual({ filled: 2, requested: 2, mode: 'overwrite' })
+    expect(useNoticesStore().entries[0]).toMatchObject({ title: 'Overwrote 2 pads' })
   })
 
   it('leaves the card alone when cancelled', async () => {
@@ -74,7 +75,7 @@ describe('PadFillPrompt', () => {
     await wrapper.findAll('.action')[2]?.trigger('click')
 
     expect(pads.padById('A1')?.audio).toBeNull()
-    expect(pads.lastFill).toBeNull()
+    expect(useNoticesStore().entries).toEqual([])
     expect(useUiStore().pendingDrop).toBeNull()
   })
 

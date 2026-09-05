@@ -330,14 +330,21 @@ pub const AIFF_SAMPLE_INDEX_OFFSET: u64 = 62;
 pub fn write_sample_index(path: &Path, slot: u8) -> Result<()> {
     use std::io::Write;
 
-    let mut file = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)?;
     let mut form = [0u8; 4];
     file.read_exact(&mut form)?;
 
     let (offset, bytes) = match &form {
         b"RIFF" => (WAVE_SAMPLE_INDEX_OFFSET, u32::from(slot).to_le_bytes()),
         b"FORM" => (AIFF_SAMPLE_INDEX_OFFSET, u32::from(slot).to_be_bytes()),
-        _ => return Err(Error::NotACard { path: path.to_path_buf() }),
+        _ => {
+            return Err(Error::NotACard {
+                path: path.to_path_buf(),
+            });
+        }
     };
 
     file.seek(SeekFrom::Start(offset))?;
@@ -363,7 +370,9 @@ pub fn read_sample_index(path: &Path) -> Result<u32> {
             file.read_exact(&mut bytes)?;
             Ok(u32::from_be_bytes(bytes))
         }
-        _ => Err(Error::NotACard { path: path.to_path_buf() }),
+        _ => Err(Error::NotACard {
+            path: path.to_path_buf(),
+        }),
     }
 }
 
@@ -1461,9 +1470,17 @@ mod tests {
         assert_eq!(&aiff[8..12], b"AIFF");
         assert_eq!(&aiff[12..16], b"COMM");
         assert_eq!(&aiff[38..42], b"APPL");
-        assert_eq!(&aiff[46..50], b"RLND", "the OSType the WAV uses as a chunk id");
+        assert_eq!(
+            &aiff[46..50],
+            b"RLND",
+            "the OSType the WAV uses as a chunk id"
+        );
         assert_eq!(&aiff[50..58], b"roifspsx");
-        assert_eq!(&aiff[58..62], &4u32.to_be_bytes(), "the WAV writes this little-endian at 54");
+        assert_eq!(
+            &aiff[58..62],
+            &4u32.to_be_bytes(),
+            "the WAV writes this little-endian at 54"
+        );
 
         let appl_size = u32::from_be_bytes([aiff[42], aiff[43], aiff[44], aiff[45]]);
         assert_eq!(appl_size, 450);
@@ -1523,7 +1540,11 @@ mod tests {
     #[test]
     fn the_sample_index_is_a_u32_in_each_formats_own_endianness() {
         assert_eq!(&HEADER_FIXTURE[54..58], &4u32.to_le_bytes());
-        assert_eq!(&HEADER_FIXTURE[58..62], &0u32.to_le_bytes(), "A0000001 is slot 0");
+        assert_eq!(
+            &HEADER_FIXTURE[58..62],
+            &0u32.to_le_bytes(),
+            "A0000001 is slot 0"
+        );
 
         assert_eq!(&AIFF_MONO_HEADER_FIXTURE[58..62], &4u32.to_be_bytes());
         assert_eq!(
@@ -1560,7 +1581,10 @@ mod tests {
         assert_eq!(before.tempo_mode, 0);
         assert_eq!(after.tempo_mode, 2);
         assert_eq!(settings_of(&after).tempo_mode, TempoMode::User);
-        assert_eq!(settings_of(&after_edits()[2]).tempo_mode, TempoMode::Pattern);
+        assert_eq!(
+            settings_of(&after_edits()[2]).tempo_mode,
+            TempoMode::Pattern
+        );
     }
 
     #[test]
@@ -1591,7 +1615,10 @@ mod tests {
             .collect();
 
         assert_eq!(changed, vec![15]);
-        assert_eq!((STP_INFO_FIXTURE[15], STP_INFO_AFTER_TEMPO_FIXTURE[15]), (1, 0));
+        assert_eq!(
+            (STP_INFO_FIXTURE[15], STP_INFO_AFTER_TEMPO_FIXTURE[15]),
+            (1, 0)
+        );
     }
     #[test]
     fn presence_notices_the_card_going_away_and_coming_back() {
@@ -1652,8 +1679,11 @@ mod tests {
         let root = dir.path().join("card");
         let samples = sample_directory(&root);
         std::fs::create_dir_all(&samples).expect("dirs");
-        std::fs::write(samples.join(PAD_INFO_FILE_NAME), vec![0u8; PAD_INFO_BYTE_LENGTH])
-            .expect("pad info");
+        std::fs::write(
+            samples.join(PAD_INFO_FILE_NAME),
+            vec![0u8; PAD_INFO_BYTE_LENGTH],
+        )
+        .expect("pad info");
         std::fs::write(samples.join(sample_file_name(0)), vec![0u8; 512]).expect("sample");
 
         let mut scopes = Scopes::new(&dir.path().join("data")).expect("scopes");

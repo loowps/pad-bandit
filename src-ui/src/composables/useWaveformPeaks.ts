@@ -1,6 +1,7 @@
 import { onScopeDispose, ref, type Ref, shallowRef, watch } from 'vue'
 import { refDebounced } from '@vueuse/core'
 import { onExactPeaks, type Peaks, requestPeaks } from '@/audio'
+import { explain } from '@/domain/errors'
 
 const COLUMN_DEBOUNCE_MS = 120
 
@@ -49,7 +50,7 @@ export function useWaveformPeaks(path: Ref<string | null>, columns: Ref<number>)
     } catch (cause) {
       if (token === requestToken) {
         peaks.value = null
-        error.value = cause instanceof Error ? cause.message : String(cause)
+        error.value = explain(cause, 'That file could not be read.')
       }
     } finally {
       if (token === requestToken) {

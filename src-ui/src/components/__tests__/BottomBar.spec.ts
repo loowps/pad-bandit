@@ -4,8 +4,8 @@ import { mount } from '@vue/test-utils'
 import BottomBar from '@/components/BottomBar.vue'
 import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
+import { useNoticesStore } from '@/stores/notices'
 import { useSyncStore } from '@/stores/sync'
-import { useUiStore } from '@/stores/ui'
 import { diskAudio, PAD_COUNT } from '@/domain/pad'
 import type { CardState } from '@/card'
 
@@ -79,90 +79,29 @@ describe('BottomBar', () => {
   })
 })
 
-describe('BottomBar after a fill', () => {
+describe('BottomBar messages', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  it('says how much of the selection landed and takes it back', async () => {
-    const pads = usePadsStore()
+  it('keeps out of the bar until there is something to say', () => {
+    expect(mount(BottomBar).find('.trigger').exists()).toBe(false)
+  })
+
+  it('counts what has not been read yet, and opens the list', async () => {
+    const notices = useNoticesStore()
     const wrapper = mount(BottomBar)
 
-    pads.fillFrom(PAD_COUNT - 2, [
-      diskAudio('one.wav'),
-      diskAudio('two.wav'),
-      diskAudio('three.wav'),
-    ])
+    notices.notify({ severity: 'error', source: 'card', title: 'The card went away' })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('.fill').text()).toContain('Filled 2 of 3 pads — 1 did not fit')
+    const trigger = wrapper.get('.trigger')
+    expect(trigger.text()).toBe('1')
+    expect(trigger.classes()).toContain('error')
 
-    await wrapper.get('.undo').trigger('click')
+    await trigger.trigger('click')
 
-    expect(pads.padById('J11')?.audio).toBeNull()
-    expect(wrapper.find('.fill').exists()).toBe(false)
-  })
-
-  it('keeps quiet about the ones that fitted exactly', async () => {
-    const pads = usePadsStore()
-    const wrapper = mount(BottomBar)
-
-    pads.fillFrom(0, [diskAudio('one.wav'), diskAudio('two.wav')])
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.get('.fill').text()).toContain('Filled 2 pads')
-
-    await wrapper.get('.dismiss').trigger('click')
-
-    expect(wrapper.find('.fill').exists()).toBe(false)
-    expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
-  })
-})
-
-describe('BottomBar after a refused drop', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-  })
-
-  it('names the file the decoder turned down and why', async () => {
-    const ui = useUiStore()
-    const wrapper = mount(BottomBar)
-
-    ui.refusedDrop = { names: ['broken.wav'], reason: 'unsupported codec' }
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.get('.refusal').text()).toContain(
-      'broken.wav could not be decoded — unsupported codec',
-    )
-
-    await wrapper.get('.refusal .dismiss').trigger('click')
-
-    expect(wrapper.find('.refusal').exists()).toBe(false)
-  })
-
-  it('counts them when several are turned down at once', async () => {
-    const ui = useUiStore()
-    const wrapper = mount(BottomBar)
-
-    ui.refusedDrop = { names: ['one.wav', 'two.wav'], reason: 'unsupported codec' }
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.get('.refusal').text()).toContain('2 files could not be decoded')
-  })
-})
-
-describe('BottomBar after an overwrite', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-  })
-
-  it('says plainly that pads were written over', async () => {
-    const pads = usePadsStore()
-    const wrapper = mount(BottomBar)
-
-    pads.fillFrom(0, [diskAudio('one.wav'), diskAudio('two.wav')], 'overwrite')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.get('.fill').text()).toContain('Overwrote 2 pads')
+    expect(wrapper.get('.panel').text()).toContain('The card went away')
+    expect(notices.unseen).toBe(0)
   })
 })

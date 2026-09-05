@@ -4,10 +4,13 @@ import { usePreferredDark } from '@vueuse/core'
 import { getConfig, setTheme, type Theme } from '@/config'
 import { type MenuAction, onMenuAction } from '@/projects'
 import { type ResolvedTheme, resolveTheme } from '@/domain/theme'
+import { explain } from '@/domain/errors'
+import { useNoticesStore } from '@/stores/notices'
+
+const THEME_NOTICE = 'theme'
 
 export const useThemeStore = defineStore('theme', () => {
   const preference = ref<Theme>('system')
-  const error = ref<string | null>(null)
   const prefersDark = usePreferredDark()
 
   const resolved = computed<ResolvedTheme>(() => resolveTheme(preference.value, prefersDark.value))
@@ -16,18 +19,20 @@ export const useThemeStore = defineStore('theme', () => {
 
   watch(resolved, (mode) => (document.documentElement.dataset.theme = mode), { immediate: true })
 
-  function messageOf(cause: unknown): string {
-    if (cause instanceof Error) {
-      return cause.message
-    }
-    return typeof cause === 'string' ? cause : 'The appearance could not be changed.'
+  function report(cause: unknown, title: string): void {
+    useNoticesStore().notify({
+      severity: 'error',
+      source: THEME_NOTICE,
+      title,
+      detail: explain(cause, 'The settings file could not be written.'),
+    })
   }
 
   async function restore(): Promise<void> {
     try {
       preference.value = (await getConfig()).theme
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The saved appearance could not be read')
     }
   }
 
@@ -36,10 +41,10 @@ export const useThemeStore = defineStore('theme', () => {
     preference.value = next
     try {
       preference.value = (await setTheme(next)).theme
-      error.value = null
+      useNoticesStore().resolve(THEME_NOTICE)
     } catch (cause) {
       preference.value = previous
-      error.value = messageOf(cause)
+      report(cause, 'The appearance could not be changed')
     }
   }
 
@@ -56,7 +61,7 @@ export const useThemeStore = defineStore('theme', () => {
     try {
       stopListening = await onMenuAction(apply)
     } catch (cause) {
-      error.value = messageOf(cause)
+      report(cause, 'The View menu is not connected')
     }
   }
 
@@ -68,7 +73,6 @@ export const useThemeStore = defineStore('theme', () => {
   return {
     preference,
     resolved,
-    error,
     restore,
     choose,
     listenToMenu,

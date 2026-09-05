@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
 import { type AudioRef, diskAudio } from '@/domain/pad'
 
 function tracks(count: number): AudioRef[] {
   return Array.from({ length: count }, (_, index) => diskAudio(`track${index + 1}.wav`))
+}
+
+function undo(): void {
+  const [notice] = useNoticesStore().entries
+  notice?.action?.run()
 }
 
 describe('filling pads from a selection', () => {
@@ -35,7 +41,10 @@ describe('filling pads from a selection', () => {
 
     pads.fillFrom(118, tracks(5))
 
-    expect(pads.lastFill).toEqual({ filled: 2, requested: 5, mode: 'fill' })
+    expect(useNoticesStore().entries[0]).toMatchObject({
+      severity: 'warning',
+      title: 'Filled 2 of 5 pads — 3 did not fit',
+    })
   })
 
   it('puts the pads back the way they were', () => {
@@ -44,12 +53,12 @@ describe('filling pads from a selection', () => {
     pads.adoptSnapshot()
 
     pads.fillFrom(0, tracks(2))
-    pads.undoFill()
+    undo()
 
     expect(pads.padById('A1')?.audio).toEqual(diskAudio('kick.wav'))
     expect(pads.padById('A2')?.audio).toBeNull()
     expect(pads.preparedPadIds).toEqual([])
-    expect(pads.lastFill).toBeNull()
+    expect(useNoticesStore().entries).toEqual([])
   })
 
   it('restores the settings a filled pad was carrying', () => {
@@ -57,7 +66,7 @@ describe('filling pads from a selection', () => {
     pads.updateSettings('A1', { volume: 40, reverse: true })
 
     pads.fillFrom(0, tracks(1))
-    pads.undoFill()
+    undo()
 
     expect(pads.padById('A1')?.settings.volume).toBe(40)
     expect(pads.padById('A1')?.settings.reverse).toBe(true)
@@ -69,7 +78,7 @@ describe('filling pads from a selection', () => {
 
     pads.adoptSnapshot()
 
-    expect(pads.lastFill).toBeNull()
+    expect(useNoticesStore().entries).toEqual([])
   })
 
   it('forgets the result when the changes are discarded', () => {
@@ -78,7 +87,7 @@ describe('filling pads from a selection', () => {
 
     pads.discardChanges()
 
-    expect(pads.lastFill).toBeNull()
+    expect(useNoticesStore().entries).toEqual([])
     expect(pads.padById('A1')?.audio).toBeNull()
   })
 })
@@ -94,7 +103,10 @@ describe('filling pads over the ones already in use', () => {
 
     expect(pads.fillFrom(0, tracks(3), 'overwrite')).toEqual(['A1', 'A2', 'A3'])
     expect(pads.padById('A2')?.audio).toEqual(diskAudio('track2.wav'))
-    expect(pads.lastFill).toEqual({ filled: 3, requested: 3, mode: 'overwrite' })
+    expect(useNoticesStore().entries[0]).toMatchObject({
+      severity: 'info',
+      title: 'Overwrote 3 pads',
+    })
   })
 
   it('gives back what it replaced', () => {
@@ -104,7 +116,7 @@ describe('filling pads over the ones already in use', () => {
     pads.adoptSnapshot()
 
     pads.fillFrom(0, tracks(3), 'overwrite')
-    pads.undoFill()
+    undo()
 
     expect(pads.padById('A2')?.audio).toEqual(diskAudio('kick.wav'))
     expect(pads.padById('A2')?.settings.volume).toBe(40)

@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useUiStore } from '@/stores/ui'
+import { useDialog } from '@/composables/useDialog'
 
 const ui = useUiStore()
+const surface = ref<HTMLElement | null>(null)
+
+useDialog(surface, () => ui.closeDrop())
 
 const headline = computed(() => {
   const pending = ui.pendingDrop
@@ -16,13 +20,18 @@ const headline = computed(() => {
 
 <template>
   <div v-if="ui.pendingDrop" class="scrim" @click.self="ui.closeDrop()">
-    <section class="prompt" role="dialog" aria-label="Pads in the way">
+    <section
+      ref="surface"
+      class="prompt"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Pads in the way"
+    >
       <p class="headline">{{ headline }}</p>
       <footer>
         <button
           type="button"
           class="action"
-          autofocus
           @mouseenter="ui.previewDrop('fill')"
           @focus="ui.previewDrop('fill')"
           @click="ui.commitDrop('fill')"

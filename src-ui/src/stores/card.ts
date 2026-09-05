@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 import { type CardState, readCard, readCardPresence } from '@/card'
 import { getConfig, setCardPath } from '@/config'
 import { baseName, getFileSystemGateway } from '@/filesystem'
+import { explain } from '@/domain/errors'
+import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
 
 export type CardStatus = 'empty' | 'reading' | 'valid' | 'invalid'
@@ -26,10 +28,7 @@ export const useCardStore = defineStore('card', () => {
   const isValid = computed(() => status.value === 'valid')
 
   function messageOf(cause: unknown): string {
-    if (cause instanceof Error) {
-      return cause.message
-    }
-    return typeof cause === 'string' ? cause : 'Could not open that folder.'
+    return explain(cause, 'That folder could not be opened.')
   }
 
   async function load(): Promise<void> {
@@ -56,7 +55,12 @@ export const useCardStore = defineStore('card', () => {
     try {
       rootPath.value = (await getConfig()).cardPath
     } catch (cause) {
-      error.value = messageOf(cause)
+      useNoticesStore().notify({
+        severity: 'error',
+        source: 'card:settings',
+        title: 'The saved card folder could not be read',
+        detail: messageOf(cause),
+      })
       return
     }
     if (rootPath.value) {
