@@ -47,6 +47,7 @@ function freshTree(): Record<string, DirectoryEntry[]> {
 }
 
 let tree = freshTree()
+let denied = new Set<string>()
 
 const folder: BrowseFolder = { id: 'f1', path: '/samples', addedAt: 1 }
 
@@ -104,6 +105,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   setActivePinia(createPinia())
   tree = freshTree()
+  denied = new Set()
   indexing = false
   searchResult = { hits: [], truncated: false }
   invokeMock.mockReset()
@@ -116,7 +118,10 @@ beforeEach(() => {
     if (command === 'index_refresh') return Promise.resolve(null)
     if (command === 'index_search') return Promise.resolve(searchResult)
     if (command === 'list_dir') {
-      return Promise.resolve(tree[(args as { path: string }).path] ?? [])
+      const { path } = args as { path: string }
+      return denied.has(path)
+        ? Promise.reject(new Error('Access is denied.'))
+        : Promise.resolve(tree[path] ?? [])
     }
     throw new Error(`unexpected command ${command}`)
   })
@@ -199,6 +204,60 @@ describe('fileBrowser store', () => {
     expect(browser.childrenOf('/samples')).toEqual([])
     expect(browser.previewPath).toBeNull()
     expect(browser.selectedPaths).toEqual([])
+  })
+
+  it('keeps the tree standing when one folder cannot be read', async () => {
+    denied.add('/samples/drums')
+    const browser = useFileBrowserStore()
+    await browser.addRoot()
+
+    await browser.toggleDirectory('/samples/drums')
+
+    expect(browser.failureOf('/samples/drums')).toBe('Access is denied.')
+    expect(browser.isExpanded('/samples/drums')).toBe(false)
+    expect(browser.error).toBeNull()
+    expect(browser.visibleRows.map((row) => row.node.name)).toEqual([
+      'samples',
+      'drums',
+      'kick.wav',
+    ])
+  })
+
+  it('clears a folder failure when the retry succeeds', async () => {
+    denied.add('/samples/drums')
+    const browser = useFileBrowserStore()
+    await browser.addRoot()
+    await browser.toggleDirectory('/samples/drums')
+
+    denied.delete('/samples/drums')
+    await browser.toggleDirectory('/samples/drums')
+
+    expect(browser.failureOf('/samples/drums')).toBeNull()
+    expect(browser.childrenOf('/samples/drums').map((child) => child.name)).toEqual(['snare.aif'])
+  })
+
+  it('forgets failures under a root that is removed', async () => {
+    denied.add('/samples/drums')
+    const browser = useFileBrowserStore()
+    await browser.addRoot()
+    await browser.toggleDirectory('/samples/drums')
+
+    await browser.removeRoot('f1')
+
+    expect(browser.failureOf('/samples/drums')).toBeNull()
+  })
+
+  it('collapses a folder that became unreadable while the tree was open', async () => {
+    const browser = useFileBrowserStore()
+    await browser.addRoot()
+    await browser.toggleDirectory('/samples/drums')
+
+    denied.add('/samples/drums')
+    await browser.refreshIndex()
+
+    expect(browser.failureOf('/samples/drums')).toBe('Access is denied.')
+    expect(browser.isExpanded('/samples/drums')).toBe(false)
+    expect(browser.childrenOf('/samples').map((child) => child.name)).toEqual(['drums', 'kick.wav'])
   })
 
   it('surfaces a failure from the backend', async () => {

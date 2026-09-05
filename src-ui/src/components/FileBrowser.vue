@@ -67,8 +67,9 @@ const emptyMessage = computed(() => {
       </button>
     </header>
 
-    <p v-if="browser.error" class="message is-error">{{ browser.error }}</p>
-    <p v-else-if="browser.roots.length === 0" class="message">
+    <p v-if="browser.error" class="banner" role="alert">{{ browser.error }}</p>
+
+    <p v-if="browser.roots.length === 0" class="message">
       Add a folder of samples to browse it here.
     </p>
     <p v-else-if="browser.isFiltering && emptyResults" class="message">{{ emptyMessage }}</p>
@@ -242,7 +243,12 @@ const emptyMessage = computed(() => {
   color: var(--text-muted);
 }
 
-.message.is-error {
+.banner {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.75rem;
   color: var(--status-danger);
+  border-bottom: 1px solid var(--panel-border);
 }
 </style>
