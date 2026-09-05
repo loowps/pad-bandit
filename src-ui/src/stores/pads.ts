@@ -25,11 +25,31 @@ import {
   type PadIntent,
   sampleIntent,
 } from '@/domain/plan'
+import { type DropMode, planDrop } from '@/domain/fill'
 import type { ProjectResolution } from '@/domain/project'
 
 export interface Bank {
   name: BankName
   pads: Pad[]
+}
+
+interface FilledPad {
+  padId: PadId
+  slot: number
+  snapshot: PadSnapshot
+  intent: PadIntent
+}
+
+interface FillRecord {
+  requested: number
+  mode: DropMode
+  filled: FilledPad[]
+}
+
+export interface FillOutcome {
+  filled: number
+  requested: number
+  mode: DropMode
 }
 
 export const usePadsStore = defineStore('pads', () => {
@@ -55,6 +75,7 @@ export const usePadsStore = defineStore('pads', () => {
 
   const snapshotById = shallowRef<Record<PadId, PadSnapshot>>(takeSnapshots())
   const intentById = ref<Record<PadId, PadIntent>>(allKeeping())
+  const fillRecord = shallowRef<FillRecord | null>(null)
 
   const banks = computed<Bank[]>(() =>
     BANK_NAMES.map((name, index) => ({
@@ -83,6 +104,16 @@ export const usePadsStore = defineStore('pads', () => {
   const preparedPadIds = computed<PadId[]>(() => plan.value.map((change) => change.padId))
 
   const hasPreparedPads = computed(() => plan.value.length > 0)
+
+  const lastFill = computed<FillOutcome | null>(() =>
+    fillRecord.value
+      ? {
+          filled: fillRecord.value.filled.length,
+          requested: fillRecord.value.requested,
+          mode: fillRecord.value.mode,
+        }
+      : null,
+  )
 
   const assignedAudioPaths = computed<Set<string>>(
     () => new Set(allPads.value.flatMap((pad) => (pad.audio ? [pad.audio.path] : []))),
@@ -127,6 +158,45 @@ export const usePadsStore = defineStore('pads', () => {
     intentById.value[id] = audio ? sampleIntent(audio) : clearIntent()
   }
 
+  function fillFrom(startSlot: number, sources: AudioRef[], mode: DropMode = 'fill'): PadId[] {
+    const targets = planDrop(byId.value, startSlot, sources.length, mode)
+    const filled = targets.flatMap<FilledPad>((padId) => {
+      const pad = byId.value[padId]
+      return pad
+        ? [
+            {
+              padId,
+              slot: pad.slot,
+              snapshot: snapshotOf(pad),
+              intent: intentById.value[padId] ?? keepIntent(),
+            },
+          ]
+        : []
+    })
+
+    targets.forEach((padId, index) => {
+      const audio = sources[index]
+      if (audio) {
+        assignAudio(padId, audio)
+      }
+    })
+
+    fillRecord.value = { requested: sources.length, mode, filled }
+    return targets
+  }
+
+  function undoFill(): void {
+    for (const { padId, slot, snapshot, intent } of fillRecord.value?.filled ?? []) {
+      byId.value[padId] = padFromSnapshot(padId, slot, snapshot)
+      intentById.value[padId] = intent
+    }
+    forgetFill()
+  }
+
+  function forgetFill(): void {
+    fillRecord.value = null
+  }
+
   function clearPad(id: PadId): void {
     const pad = byId.value[id]
     if (!pad) {
@@ -152,6 +222,7 @@ export const usePadsStore = defineStore('pads', () => {
     for (const id of preparedPadIds.value) {
       revertPad(id)
     }
+    forgetFill()
   }
 
   function loadFromCard(state: CardState): void {
@@ -210,11 +281,13 @@ export const usePadsStore = defineStore('pads', () => {
   function adoptSnapshot(): void {
     snapshotById.value = takeSnapshots()
     intentById.value = allKeeping()
+    forgetFill()
   }
 
   function applyProject(resolution: ProjectResolution): void {
     byId.value = resolution.pads
     intentById.value = resolution.intents
+    forgetFill()
   }
 
   function resetCard(): void {
@@ -232,12 +305,16 @@ export const usePadsStore = defineStore('pads', () => {
     plan,
     preparedPadIds,
     hasPreparedPads,
+    lastFill,
     padById,
     changeFor,
     isPrepared,
     usesAudioPath,
     updateSettings,
     assignAudio,
+    fillFrom,
+    undoFill,
+    forgetFill,
     clearPad,
     revertPad,
     discardChanges,

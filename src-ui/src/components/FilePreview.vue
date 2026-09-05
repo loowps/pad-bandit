@@ -15,7 +15,8 @@ const audio = useAudioStore()
 
 const track = useTemplateRef<HTMLElement>('track')
 
-const selectedPath = computed(() => browser.selectedFilePath)
+const selectedPath = computed(() => browser.previewPath)
+const selectedCount = computed(() => browser.selectedPaths.length)
 const { peaks, isLoading, error } = useWaveformPeaks(
   selectedPath,
   computed(() => PEAK_COLUMNS),
@@ -98,8 +99,9 @@ function endScrub(event: PointerEvent): void {
 
 <template>
   <section class="preview">
+    <p v-if="selectedCount > 1" class="selection">{{ selectedCount }} files selected</p>
+
     <p v-if="!selectedPath" class="hint">Select a file to preview it.</p>
-    <p v-else-if="isReading" class="hint">Reading…</p>
     <p v-else-if="error" class="hint is-error">{{ error }}</p>
 
     <template v-else>
@@ -107,6 +109,7 @@ function endScrub(event: PointerEvent): void {
         <button
           type="button"
           class="transport"
+          :disabled="isReading"
           :aria-label="isActive ? 'Stop preview' : 'Play preview'"
           @click="toggle()"
         >
@@ -116,7 +119,7 @@ function endScrub(event: PointerEvent): void {
           </svg>
         </button>
         <span class="file-name" :title="name">{{ name }}</span>
-        <span class="clock">{{ elapsed }} / {{ duration }}</span>
+        <span class="clock">{{ isReading ? 'reading…' : `${elapsed} / ${duration}` }}</span>
       </div>
 
       <div
@@ -157,6 +160,14 @@ function endScrub(event: PointerEvent): void {
   color: var(--status-danger);
 }
 
+.selection {
+  margin: 0;
+  padding: 0.125rem 0.125rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .controls {
   display: flex;
   gap: 0.375rem;
@@ -178,9 +189,14 @@ function endScrub(event: PointerEvent): void {
   border-radius: var(--radius-sm);
 }
 
-.transport:hover {
+.transport:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.transport:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .transport:focus-visible {

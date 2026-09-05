@@ -17,8 +17,14 @@ const { list, containerProps, wrapperProps } = useVirtualList(rows, {
 </script>
 
 <template>
-  <div v-bind="containerProps" class="tree">
-    <div v-bind="wrapperProps">
+  <div
+    v-bind="containerProps"
+    class="tree"
+    role="tree"
+    aria-label="Samples"
+    aria-multiselectable="true"
+  >
+    <div v-bind="wrapperProps" role="presentation">
       <FileTreeRow v-for="item in list" :key="item.data.node.path" :row="item.data" />
     </div>
   </div>

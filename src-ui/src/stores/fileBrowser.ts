@@ -46,7 +46,8 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
   const childrenByPath = shallowRef<Record<string, FsNode[]>>({})
   const expandedPaths = ref(new Set<string>())
   const loadingPaths = ref(new Set<string>())
-  const selectedFilePath = ref<string | null>(null)
+  const selectedPaths = ref<string[]>([])
+  const previewPath = ref<string | null>(null)
   const previewStartFrame = ref<number | null>(null)
   const error = ref<string | null>(null)
 
@@ -91,6 +92,12 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     isFiltering.value ? resultRows.value : treeRows.value,
   )
 
+  const selection = computed(() => new Set(selectedPaths.value))
+
+  function isSelected(filePath: string): boolean {
+    return selection.value.has(filePath)
+  }
+
   function childrenOf(directoryPath: string): FsNode[] {
     return childrenByPath.value[directoryPath] ?? []
   }
@@ -125,6 +132,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
   async function toggleDirectory(directoryPath: string): Promise<void> {
     if (expandedPaths.value.has(directoryPath)) {
       expandedPaths.value.delete(directoryPath)
+      pruneSelection()
       return
     }
     expandedPaths.value.add(directoryPath)
@@ -171,6 +179,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       truncated.value = false
       searching.value = false
     }
+    pruneSelection()
   }
 
   function clearQuery(): void {
@@ -205,15 +214,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     }
 
     childrenByPath.value = reread
-    if (selectedFilePath.value && !isStillListed(selectedFilePath.value, reread)) {
-      selectFile(null)
-    }
-  }
-
-  function isStillListed(filePath: string, listings: Record<string, FsNode[]>): boolean {
-    return Object.values(listings).some((children) =>
-      children.some((child) => child.path === filePath),
-    )
+    pruneSelection()
   }
 
   async function refreshIndex(): Promise<void> {
@@ -286,9 +287,7 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
       }
     }
     childrenByPath.value = remaining
-    if (selectedFilePath.value && isUnder(selectedFilePath.value, folder.path)) {
-      selectedFilePath.value = null
-    }
+    pruneSelection()
   }
 
   function isUnder(candidate: string, root: string): boolean {
@@ -298,10 +297,62 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
   }
 
   function selectFile(filePath: string | null): void {
-    if (selectedFilePath.value === filePath) {
+    selectedPaths.value = filePath ? [filePath] : []
+    setPreview(filePath)
+  }
+
+  function toggleFile(filePath: string): void {
+    const wanted = new Set(selectedPaths.value)
+    if (!wanted.delete(filePath)) {
+      wanted.add(filePath)
+    }
+    selectedPaths.value = inRowOrder(wanted)
+    setPreview(wanted.has(filePath) ? filePath : (selectedPaths.value[0] ?? null))
+  }
+
+  function extendSelection(filePath: string): void {
+    const rows = visibleRows.value
+    const anchor = rows.findIndex((row) => row.node.path === previewPath.value)
+    const reached = rows.findIndex((row) => row.node.path === filePath)
+    if (anchor === -1 || reached === -1) {
+      selectFile(filePath)
       return
     }
-    selectedFilePath.value = filePath
+
+    const [first, last] = anchor <= reached ? [anchor, reached] : [reached, anchor]
+    selectedPaths.value = rows
+      .slice(first, last + 1)
+      .filter((row) => !row.node.isDirectory)
+      .map((row) => row.node.path)
+  }
+
+  function dragPaths(filePath: string): string[] {
+    if (!isSelected(filePath)) {
+      selectFile(filePath)
+    }
+    return [...selectedPaths.value]
+  }
+
+  function inRowOrder(paths: ReadonlySet<string>): string[] {
+    return visibleRows.value.filter((row) => paths.has(row.node.path)).map((row) => row.node.path)
+  }
+
+  function pruneSelection(): void {
+    const kept = inRowOrder(selection.value)
+    if (kept.length === selectedPaths.value.length) {
+      return
+    }
+    selectedPaths.value = kept
+    if (previewPath.value !== null && !kept.includes(previewPath.value)) {
+      setPreview(kept[0] ?? null)
+    }
+  }
+
+  function setPreview(filePath: string | null): void {
+    if (previewPath.value === filePath) {
+      return
+    }
+    previewPath.value = filePath
     previewStartFrame.value = null
   }
 
@@ -314,7 +365,8 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     roots,
     childrenByPath,
     expandedPaths,
-    selectedFilePath,
+    selectedPaths,
+    previewPath,
     previewStartFrame,
     error,
     visibleRows,
@@ -326,11 +378,15 @@ export const useFileBrowserStore = defineStore('fileBrowser', () => {
     childrenOf,
     isExpanded,
     isLoading,
+    isSelected,
     restore,
     toggleDirectory,
     addRoot,
     removeRoot,
     selectFile,
+    toggleFile,
+    extendSelection,
+    dragPaths,
     setPreviewStart,
     setQuery,
     refreshIndex,

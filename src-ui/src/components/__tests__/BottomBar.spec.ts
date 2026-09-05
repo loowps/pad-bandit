@@ -77,3 +77,59 @@ describe('BottomBar', () => {
     expect(useSyncStore().isOpen).toBe(true)
   })
 })
+
+describe('BottomBar after a fill', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('says how much of the selection landed and takes it back', async () => {
+    const pads = usePadsStore()
+    const wrapper = mount(BottomBar)
+
+    pads.fillFrom(PAD_COUNT - 2, [
+      diskAudio('one.wav'),
+      diskAudio('two.wav'),
+      diskAudio('three.wav'),
+    ])
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.fill').text()).toContain('Filled 2 of 3 pads — 1 did not fit')
+
+    await wrapper.get('.undo').trigger('click')
+
+    expect(pads.padById('J11')?.audio).toBeNull()
+    expect(wrapper.find('.fill').exists()).toBe(false)
+  })
+
+  it('keeps quiet about the ones that fitted exactly', async () => {
+    const pads = usePadsStore()
+    const wrapper = mount(BottomBar)
+
+    pads.fillFrom(0, [diskAudio('one.wav'), diskAudio('two.wav')])
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.fill').text()).toContain('Filled 2 pads')
+
+    await wrapper.get('.dismiss').trigger('click')
+
+    expect(wrapper.find('.fill').exists()).toBe(false)
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('one.wav'))
+  })
+})
+
+describe('BottomBar after an overwrite', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('says plainly that pads were written over', async () => {
+    const pads = usePadsStore()
+    const wrapper = mount(BottomBar)
+
+    pads.fillFrom(0, [diskAudio('one.wav'), diskAudio('two.wav')], 'overwrite')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.fill').text()).toContain('Overwrote 2 pads')
+  })
+})

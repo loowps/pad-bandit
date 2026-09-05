@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import {
   backendCalls,
   cardWithFilledSlots,
@@ -62,20 +62,20 @@ test('reads the saved folders on startup', async ({ page }) => {
 test('adds a folder through the picker and browses into it', async ({ page }) => {
   await page.getByRole('button', { name: 'Add audio folder' }).click()
 
-  await expect(page.getByRole('button', { name: 'drums' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'drums' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
 
   const commands = (await backendCalls(page)).map((call) => call.command)
   expect(commands).toContain('pick_folder')
   expect(commands).toContain('config_add_folder')
 
-  await page.getByRole('button', { name: 'drums' }).click()
-  await expect(page.getByRole('button', { name: 'snare.wav' })).toBeVisible()
+  await page.getByRole('treeitem', { name: 'drums' }).click()
+  await expect(page.getByRole('treeitem', { name: 'snare.wav' })).toBeVisible()
 })
 
 test('removes a folder again', async ({ page }) => {
   await page.getByRole('button', { name: 'Add audio folder' }).click()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Remove samples' }).click()
 
@@ -244,24 +244,24 @@ test('switching mode from the menu repaints the app and remembers the choice', a
 
 test('searching narrows the tree to matching samples and back again', async ({ page }) => {
   await page.getByRole('button', { name: 'Add audio folder' }).click()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
 
   const searchBox = page.getByRole('searchbox', { name: 'Search samples' })
   await searchBox.fill('snare')
 
-  await expect(page.getByRole('button', { name: /snare\.wav/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeHidden()
-  await expect(page.getByRole('button', { name: 'drums', exact: true })).toBeHidden()
+  await expect(page.getByRole('treeitem', { name: /snare\.wav/ })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeHidden()
+  await expect(page.getByRole('treeitem', { name: 'drums', exact: true })).toBeHidden()
 
   await page.getByRole('button', { name: 'Clear search' }).click()
 
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'drums', exact: true })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'drums', exact: true })).toBeVisible()
 })
 
 test('says so when nothing matches the search', async ({ page }) => {
   await page.getByRole('button', { name: 'Add audio folder' }).click()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
 
   await page.getByRole('searchbox', { name: 'Search samples' }).fill('zzzz')
 
@@ -270,17 +270,17 @@ test('says so when nothing matches the search', async ({ page }) => {
 
 test('a one-letter search is too short and leaves the tree alone', async ({ page }) => {
   await page.getByRole('button', { name: 'Add audio folder' }).click()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
 
   await page.getByRole('searchbox', { name: 'Search samples' }).fill('k')
 
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
   expect((await backendCalls(page)).map((call) => call.command)).not.toContain('index_search')
 })
 
 test('rescanning the folders rebuilds the sample index', async ({ page }) => {
   await page.getByRole('button', { name: 'Add audio folder' }).click()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Rescan folders' }).click()
 
@@ -296,8 +296,8 @@ test('offers no rescan until a folder has been added', async ({ page }) => {
 
 test('a rescan brings a newly added file into the open tree', async ({ page }) => {
   await page.getByRole('button', { name: 'Add audio folder' }).click()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'clap.wav' })).toBeHidden()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'clap.wav' })).toBeHidden()
 
   await setEntries(page, '/samples', [
     entry('/samples/drums', true),
@@ -306,6 +306,95 @@ test('a rescan brings a newly added file into the open tree', async ({ page }) =
   ])
   await page.getByRole('button', { name: 'Rescan folders' }).click()
 
-  await expect(page.getByRole('button', { name: 'clap.wav' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'kick.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'clap.wav' })).toBeVisible()
+  await expect(page.getByRole('treeitem', { name: 'kick.wav' })).toBeVisible()
+})
+
+test('a multi-file selection fills the free pads from the drop onwards', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await page.getByRole('treeitem', { name: 'drums' }).click()
+
+  await page.getByRole('treeitem', { name: 'snare.wav' }).click()
+  await page.getByRole('treeitem', { name: 'kick.wav' }).click({ modifiers: ['Control'] })
+  await expect(page.getByText('2 files selected')).toBeVisible()
+
+  await page
+    .getByRole('treeitem', { name: 'kick.wav' })
+    .dragTo(page.getByRole('button', { name: 'Pad A4', exact: true }))
+
+  await expect(page.getByRole('button', { name: 'Pad A4, sample added' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pad A5, sample added' })).toBeVisible()
+  await expect(page.getByText('Filled 2 pads')).toBeVisible()
+})
+
+test('the undo after a fill puts the pads back', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await page.getByRole('treeitem', { name: 'drums' }).click()
+
+  await page.getByRole('treeitem', { name: 'snare.wav' }).click()
+  await page.getByRole('treeitem', { name: 'kick.wav' }).click({ modifiers: ['Shift'] })
+
+  await page
+    .getByRole('treeitem', { name: 'kick.wav' })
+    .dragTo(page.getByRole('button', { name: 'Pad A4', exact: true }))
+  await expect(page.getByRole('button', { name: 'Pad A4, sample added' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Undo' }).click()
+
+  await expect(page.getByRole('button', { name: 'Pad A4', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pad A5', exact: true })).toBeVisible()
+})
+
+async function dropTwoOnPadA1(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Choose card folder…' }).click()
+  await expect(page.getByText('Card folder recognised')).toBeVisible()
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await page.getByRole('treeitem', { name: 'drums' }).click()
+
+  await page.getByRole('treeitem', { name: 'snare.wav' }).click()
+  await page.getByRole('treeitem', { name: 'kick.wav' }).click({ modifiers: ['Control'] })
+
+  await page
+    .getByRole('treeitem', { name: 'kick.wav' })
+    .dragTo(page.getByRole('button', { name: 'Pad A1', exact: true }))
+}
+
+test('a drop onto pads already in use asks before it writes', async ({ page }) => {
+  await dropTwoOnPadA1(page)
+
+  const prompt = page.getByRole('dialog', { name: 'Pads in the way' })
+  await expect(prompt).toContainText('2 files from A1 — 2 pads already hold a sample.')
+  await expect(page.getByRole('button', { name: 'Pad A1, sample replaced' })).toBeHidden()
+
+  await prompt.getByRole('button', { name: 'Overwrite them' }).click()
+
+  await expect(page.getByRole('button', { name: 'Pad A1, sample replaced' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pad A2, sample replaced' })).toBeVisible()
+  await expect(page.getByText('Overwrote 2 pads')).toBeVisible()
+})
+
+test('skipping walks the drop past the pads in use', async ({ page }) => {
+  await dropTwoOnPadA1(page)
+
+  await page
+    .getByRole('dialog', { name: 'Pads in the way' })
+    .getByRole('button', { name: 'Skip them' })
+    .click()
+
+  await expect(page.getByRole('button', { name: 'Pad A4, sample added' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pad A5, sample added' })).toBeVisible()
+  await expect(page.getByText('Filled 2 pads')).toBeVisible()
+})
+
+test('cancelling the prompt leaves every pad as it was', async ({ page }) => {
+  await dropTwoOnPadA1(page)
+
+  await page
+    .getByRole('dialog', { name: 'Pads in the way' })
+    .getByRole('button', { name: 'Cancel' })
+    .click()
+
+  await expect(page.getByRole('dialog', { name: 'Pads in the way' })).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Pad A1, sample replaced' })).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Pad A4, sample added' })).toBeHidden()
 })

@@ -170,7 +170,10 @@ watch(
 const dragMode = ref<DragMode | null>(null)
 const isDragOver = ref(false)
 
-const acceptsDrop = computed(() => selectedPad.value !== null && ui.dragPayload?.source === 'audio')
+const acceptsDrop = computed(() => {
+  const payload = ui.dragPayload
+  return selectedPad.value !== null && payload?.source === 'audio' && payload.audio.length === 1
+})
 
 const showsDropTarget = computed(() => isDragOver.value && acceptsDrop.value)
 
@@ -190,10 +193,11 @@ function handleDragLeave(event: DragEvent): void {
 function handleDrop(): void {
   const payload = ui.dragPayload
   const pad = selectedPad.value
+  const dropped = acceptsDrop.value && payload?.source === 'audio' ? payload.audio[0] : null
   isDragOver.value = false
 
-  if (pad && payload?.source === 'audio') {
-    pads.assignAudio(pad.id, payload.audio)
+  if (pad && dropped) {
+    pads.assignAudio(pad.id, dropped)
   }
   ui.endDrag()
 }

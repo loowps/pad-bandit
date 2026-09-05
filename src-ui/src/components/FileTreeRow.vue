@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useFileBrowserStore, type VisibleRow } from '@/stores/fileBrowser'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
+import { baseName } from '@/filesystem'
 import { diskAudio } from '@/domain/pad'
 
 const props = defineProps<{ row: VisibleRow }>()
@@ -14,24 +15,30 @@ const ui = useUiStore()
 const node = computed(() => props.row.node)
 const isExpanded = computed(() => browser.isExpanded(node.value.path))
 const isLoading = computed(() => browser.isLoading(node.value.path))
-const isSelected = computed(() => browser.selectedFilePath === node.value.path)
+const isSelected = computed(() => browser.isSelected(node.value.path))
+const isPreviewed = computed(() => browser.previewPath === node.value.path)
 const isAssigned = computed(() => !node.value.isDirectory && pads.usesAudioPath(node.value.path))
 const indent = computed(() => `${0.375 + props.row.depth * 0.75}rem`)
 const label = computed(() =>
   props.row.location ? `${props.row.location}/${node.value.name}` : node.value.name,
 )
 
-function activate(): void {
+function activate(event: MouseEvent): void {
   if (node.value.isDirectory) {
     void browser.toggleDirectory(node.value.path)
+  } else if (event.shiftKey) {
+    browser.extendSelection(node.value.path)
+  } else if (event.ctrlKey || event.metaKey) {
+    browser.toggleFile(node.value.path)
   } else {
     browser.selectFile(node.value.path)
   }
 }
 
 function handleDragStart(event: DragEvent): void {
-  event.dataTransfer?.setData('text/plain', node.value.name)
-  ui.startDrag({ source: 'audio', audio: diskAudio(node.value.path) })
+  const paths = browser.dragPaths(node.value.path)
+  event.dataTransfer?.setData('text/plain', paths.map(baseName).join('\n'))
+  ui.startDrag({ source: 'audio', audio: paths.map(diskAudio) })
 }
 
 function removeRoot(): void {
@@ -42,14 +49,17 @@ function removeRoot(): void {
 </script>
 
 <template>
-  <div class="row-wrap" :class="{ 'is-selected': isSelected }">
+  <div class="row-wrap" :class="{ 'is-selected': isSelected, 'is-previewed': isPreviewed }">
     <button
       type="button"
       class="row"
+      role="treeitem"
       :class="{ 'is-directory': node.isDirectory, 'is-root': Boolean(row.rootId) }"
       :style="{ paddingLeft: indent }"
       :draggable="!node.isDirectory"
+      :aria-level="row.depth + 1"
       :aria-expanded="node.isDirectory ? isExpanded : undefined"
+      :aria-selected="node.isDirectory ? undefined : isSelected"
       :title="label"
       @click="activate"
       @dragstart="handleDragStart"
@@ -104,6 +114,14 @@ function removeRoot(): void {
 .row-wrap.is-selected {
   color: #fff;
   background: var(--accent);
+}
+
+.row-wrap.is-previewed {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.row-wrap.is-selected.is-previewed {
+  box-shadow: inset 2px 0 0 currentcolor;
 }
 
 .row {

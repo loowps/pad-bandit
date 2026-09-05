@@ -287,7 +287,7 @@ describe('PadWaveform playhead dragging', () => {
     const ui = useUiStore()
     const pads = usePadsStore()
 
-    ui.startDrag({ source: 'audio', audio: diskAudio('/samples/snare.wav') })
+    ui.startDrag({ source: 'audio', audio: [diskAudio('/samples/snare.wav')] })
     await wrapper.trigger('dragover')
     expect(wrapper.classes()).toContain('is-drop-target')
 
@@ -302,7 +302,7 @@ describe('PadWaveform playhead dragging', () => {
     await flushPromises()
     const ui = useUiStore()
 
-    ui.startDrag({ source: 'audio', audio: diskAudio('/samples/snare.wav') })
+    ui.startDrag({ source: 'audio', audio: [diskAudio('/samples/snare.wav')] })
     await wrapper.trigger('dragover')
     expect(wrapper.classes()).not.toContain('is-drop-target')
 
