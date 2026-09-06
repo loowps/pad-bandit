@@ -5,6 +5,7 @@ import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { audioSourceName, isPadEmpty } from '@/domain/pad'
 import { channelsLabel, clockTime, folderTrail, sampleRateLabel } from '@/domain/format'
+import { showPathMenu } from '@/composables/usePathMenu'
 
 const ui = useUiStore()
 const pads = usePadsStore()
@@ -72,7 +73,10 @@ const syncState = computed<'synced' | 'unsynced' | null>(() => {
       </svg>
     </button>
 
-    <div class="heading">
+    <div
+      class="heading"
+      @contextmenu.prevent="showPathMenu($event, ui.selectedPad?.audio?.path ?? null)"
+    >
       <span class="source-name" :class="{ empty: !canPlay }">{{ title }}</span>
       <p class="details">
         <span v-for="(part, index) in details" :key="part" class="detail">

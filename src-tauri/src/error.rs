@@ -52,6 +52,9 @@ pub enum Error {
     Window(String),
 
     #[error("{0}")]
+    Reveal(String),
+
+    #[error("{0}")]
     Io(#[from] std::io::Error),
 
     #[error("{0}")]
@@ -79,6 +82,7 @@ impl Error {
             Self::UnsupportedProjectVersion { .. } => "unsupportedProjectVersion",
             Self::Audio(_) => "audio",
             Self::Window(_) => "window",
+            Self::Reveal(_) => "reveal",
             Self::Io(_) => "io",
             Self::Serde(_) => "serde",
         }
@@ -124,6 +128,7 @@ mod tests {
             Error::UnsupportedProjectVersion { version: 9 },
             Error::Audio("no decoder".into()),
             Error::Window("no window".into()),
+            Error::Reveal("no file manager".into()),
             Error::Io(std::io::Error::other("disk gone")),
             Error::Serde(serde_json::from_str::<u8>("nope").unwrap_err()),
         ]

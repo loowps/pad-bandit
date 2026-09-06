@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::audio::decode::is_supported_extension;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::paths::Scopes;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -38,6 +38,15 @@ pub fn list_dir(scopes: &Scopes, path: &Path) -> Result<Vec<Entry>> {
 
     entries.sort_by(compare_entries);
     Ok(entries)
+}
+
+pub fn reveal(scopes: &Scopes, path: &Path) -> Result<()> {
+    let target = scopes.readable(path)?;
+    if !target.exists() {
+        return Err(Error::UnresolvablePath(path.to_path_buf()));
+    }
+    tauri_plugin_opener::reveal_item_in_dir(target)
+        .map_err(|cause| Error::Reveal(cause.to_string()))
 }
 
 pub(crate) fn is_audio_file(name: &str, is_dir: bool) -> bool {
@@ -127,6 +136,25 @@ mod tests {
 
     fn write(path: &Path, bytes: &[u8]) {
         std::fs::write(path, bytes).expect("write file");
+    }
+
+    #[test]
+    fn revealing_refuses_a_path_outside_every_readable_root() {
+        let f = fixture();
+        write(&f.elsewhere.join("kick.wav"), b"x");
+
+        let refusal = reveal(&f.scopes, &f.elsewhere.join("kick.wav")).expect_err("refusal");
+
+        assert!(matches!(refusal, Error::OutsideReadableScope(_)));
+    }
+
+    #[test]
+    fn revealing_refuses_a_readable_path_that_is_gone() {
+        let f = fixture();
+
+        let refusal = reveal(&f.scopes, &f.browse.join("gone.wav")).expect_err("refusal");
+
+        assert!(matches!(refusal, Error::UnresolvablePath(_)));
     }
 
     #[test]

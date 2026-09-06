@@ -6,6 +6,7 @@ import { usePadsStore } from '@/stores/pads'
 import { useProjectsStore } from '@/stores/projects'
 import { useSyncStore } from '@/stores/sync'
 import type { PadChangeStatus } from '@/domain/plan'
+import { showPathMenu } from '@/composables/usePathMenu'
 
 const WORK_LABELS: Record<PadChangeStatus, string> = {
   added: 'to copy',
@@ -72,6 +73,7 @@ const presenceLabel = computed(() => {
         :title="card.rootPath ?? ''"
         :disabled="sync.running"
         @click="card.pickCard()"
+        @contextmenu.prevent="showPathMenu($event, card.rootPath)"
       >
         <span class="presence" :class="card.presence" aria-hidden="true" />
         <span class="path">{{ card.path }}</span>

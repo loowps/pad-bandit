@@ -164,6 +164,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
         pick_folder: () => given.pickedFolder,
         list_dir: ({ path }) => given.entries[path] ?? [],
+        reveal_in_file_manager: () => null,
         index_busy: () => false,
         index_refresh: () => null,
         index_search: ({ query }) => {

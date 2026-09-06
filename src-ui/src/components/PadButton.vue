@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { numberInBank, type Pad } from '@/domain/pad'
+import { showPathMenu } from '@/composables/usePathMenu'
 
 const CHANGE_LABELS = {
   settings: 'settings changed',
@@ -43,6 +44,11 @@ const padLabel = computed(() => {
   return status ? `Pad ${props.pad.id}, ${CHANGE_LABELS[status]}` : `Pad ${props.pad.id}`
 })
 
+function openMenu(event: MouseEvent): void {
+  ui.selectPad(props.pad.id)
+  showPathMenu(event, props.pad.audio?.path ?? null)
+}
+
 function handleClearKey(event: KeyboardEvent): void {
   if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault()
@@ -80,6 +86,7 @@ function handleDrop(): void {
     :aria-pressed="isSelected"
     draggable="true"
     @click="ui.selectPad(pad.id)"
+    @contextmenu.prevent="openMenu"
     @keydown="handleClearKey"
     @dragstart="handleDragStart"
     @dragend="ui.endDrag()"

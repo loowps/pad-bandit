@@ -5,6 +5,7 @@ import { usePadsStore } from '@/stores/pads'
 import { useUiStore } from '@/stores/ui'
 import { baseName } from '@/filesystem'
 import { diskAudio } from '@/domain/pad'
+import { showPathMenu } from '@/composables/usePathMenu'
 
 const props = defineProps<{ row: VisibleRow }>()
 
@@ -70,6 +71,7 @@ function removeRoot(): void {
       :aria-selected="node.isDirectory ? undefined : isSelected"
       :title="label"
       @click="activate"
+      @contextmenu.prevent="showPathMenu($event, node.path)"
       @dragstart="handleDragStart"
       @dragend="ui.endDrag()"
     >

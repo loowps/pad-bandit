@@ -21,6 +21,7 @@ export interface SampleSearchResult {
 export interface FileSystemGateway {
   pickDirectory(): Promise<string | null>
   listChildren(directoryPath: string): Promise<FsNode[]>
+  revealInFileManager(path: string): Promise<void>
   searchSamples(query: string): Promise<SampleSearchResult>
   isIndexing(): Promise<boolean>
   refreshIndex(): Promise<void>
