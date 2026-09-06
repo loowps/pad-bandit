@@ -2,6 +2,7 @@
 import AppToolbar from '@/components/AppToolbar.vue'
 import BankGrid from '@/components/BankGrid.vue'
 import BottomBar from '@/components/BottomBar.vue'
+import ContextMenu from '@/components/ContextMenu.vue'
 import FileBrowser from '@/components/FileBrowser.vue'
 import NoticeToasts from '@/components/NoticeToasts.vue'
 import PaneDivider from '@/components/PaneDivider.vue'
@@ -67,6 +68,7 @@ onUnmounted(() => {
     <BottomBar />
     <NoticeToasts />
   </div>
+  <ContextMenu />
   <SyncPreview />
   <PadFillPrompt />
   <RecoveryDialog />

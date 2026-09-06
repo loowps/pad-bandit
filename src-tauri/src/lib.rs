@@ -45,6 +45,7 @@ pub fn run() {
             commands::config_set_theme,
             commands::pick_folder,
             commands::list_dir,
+            commands::reveal_in_file_manager,
             commands::index_busy,
             commands::index_search,
             commands::index_refresh,

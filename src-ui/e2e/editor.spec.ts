@@ -398,3 +398,36 @@ test('cancelling the prompt leaves every pad as it was', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Pad A1, sample replaced' })).toBeHidden()
   await expect(page.getByRole('button', { name: 'Pad A4, sample added' })).toBeHidden()
 })
+
+test('right-clicking a sample offers to show it in the file manager', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await page.getByRole('treeitem', { name: 'kick.wav' }).click({ button: 'right' })
+
+  const menu = page.getByRole('menu', { name: 'Actions' })
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitem').first().click()
+
+  await expect(menu).toBeHidden()
+  await expect
+    .poll(async () => (await backendCalls(page)).filter((call) => call.command === 'reveal_in_file_manager'))
+    .toEqual([{ command: 'reveal_in_file_manager', args: { path: '/samples/kick.wav' } }])
+})
+
+test('right-clicking an empty pad offers nothing to act on', async ({ page }) => {
+  await page.getByRole('button', { name: 'Pad C4', exact: true }).click({ button: 'right' })
+
+  const menu = page.getByRole('menu', { name: 'Actions' })
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('menuitem')).toHaveCount(2)
+  await expect(menu.getByRole('menuitem').first()).toBeDisabled()
+
+  await page.keyboard.press('Escape')
+  await expect(menu).toBeHidden()
+})
+
+test('right-clicking a pad selects it so the menu names its sample', async ({ page }) => {
+  await page.getByRole('button', { name: 'Pad A1', exact: true }).click({ button: 'right' })
+
+  await expect(page.getByRole('region', { name: 'Selected pad' })).toContainText('A1')
+  await page.keyboard.press('Escape')
+})

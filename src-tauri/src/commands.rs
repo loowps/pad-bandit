@@ -75,6 +75,11 @@ pub fn list_dir(state: State<'_, AppState>, path: PathBuf) -> Result<Vec<Entry>>
 }
 
 #[tauri::command(async)]
+pub fn reveal_in_file_manager(state: State<'_, AppState>, path: PathBuf) -> Result<()> {
+    crate::fs::reveal(&state.scopes(), &path)
+}
+
+#[tauri::command(async)]
 pub fn card_read(state: State<'_, AppState>) -> Result<CardState> {
     state.read_card()
 }

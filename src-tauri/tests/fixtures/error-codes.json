@@ -8,6 +8,7 @@
   "outsideReadableScope",
   "outsideWritableScope",
   "padInfoTooShort",
+  "reveal",
   "serde",
   "syncInProgress",
   "ungrantedFile",
