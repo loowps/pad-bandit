@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "pad-bandit-tauri",
+  "productName": "Pad Bandit",
   "version": "0.1.0",
-  "identifier": "com.padbandit.app",
+  "identifier": "com.loowps.padbandit",
   "build": {
     "beforeDevCommand": "pnpm --filter pad-bandit-ui run dev",
     "devUrl": "http://localhost:1420",
