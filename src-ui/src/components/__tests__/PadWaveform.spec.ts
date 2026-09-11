@@ -299,6 +299,63 @@ describe('PadWaveform playhead dragging', () => {
     expect(ui.dragPayload).toBeNull()
   })
 
+  it('shows what is known about a missing source and re-links a file dropped on it', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.applyProject({
+      pads: { ...pads.byId },
+      intents: { ...pads.intentById },
+      orphans: {
+        A1: {
+          audio: { kind: 'path', path: '/gone/kick.wav' },
+          settings: { ...pads.padById('A1')!.settings, volume: 40 },
+        },
+      },
+      moved: [],
+      summary: { resolved: 0, moved: 0, missing: 1, keeping: 0 },
+    })
+    ui.selectPad('A1')
+    const wrapper = mount(PadWaveform)
+    await flushPromises()
+
+    expect(wrapper.get('.missing').text()).toContain('kick.wav can no longer be found')
+    expect(wrapper.get('.missing').text()).toContain('It was at /gone/kick.wav')
+
+    ui.startDrag({ source: 'audio', audio: [diskAudio('/samples/kick.wav')] })
+    await wrapper.trigger('dragover')
+    await wrapper.trigger('drop')
+    await flushPromises()
+
+    expect(pads.padById('A1')?.audio).toEqual(diskAudio('/samples/kick.wav'))
+    expect(pads.padById('A1')?.settings.volume).toBe(40)
+    expect(wrapper.find('.missing').exists()).toBe(false)
+  })
+
+  it('lets a missing source go and shows the pad as the card has it', async () => {
+    const pads = usePadsStore()
+    const ui = useUiStore()
+    pads.applyProject({
+      pads: { ...pads.byId },
+      intents: { ...pads.intentById },
+      orphans: {
+        A1: {
+          audio: { kind: 'path', path: '/gone/kick.wav' },
+          settings: pads.byId['A1']!.settings,
+        },
+      },
+      moved: [],
+      summary: { resolved: 0, moved: 0, missing: 1, keeping: 0 },
+    })
+    ui.selectPad('A1')
+    const wrapper = mount(PadWaveform)
+    await flushPromises()
+
+    await wrapper.get('button.dismiss').trigger('click')
+
+    expect(pads.missingCount).toBe(0)
+    expect(wrapper.find('.missing').exists()).toBe(false)
+  })
+
   it('ignores a drop while no pad is selected', async () => {
     const wrapper = mount(PadWaveform)
     await flushPromises()

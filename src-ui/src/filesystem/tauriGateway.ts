@@ -27,6 +27,10 @@ export class TauriFileSystemGateway implements FileSystemGateway {
     return entries.map(toNode)
   }
 
+  async missingFiles(paths: string[]): Promise<string[]> {
+    return await invoke<string[]>('files_missing', { paths })
+  }
+
   async revealInFileManager(path: string): Promise<void> {
     await invoke('reveal_in_file_manager', { path })
   }

@@ -6,7 +6,7 @@ import { useCardStore } from '@/stores/card'
 import { useSyncStore } from '@/stores/sync'
 import { diskAudio, PAD_COUNT } from '@/domain/pad'
 import type { CardSlot, CardState } from '@/card'
-import type { Preflight, SyncPlan, SyncProgress } from '@/sync'
+import type { Preflight, SyncOutcome, SyncPlan, SyncProgress } from '@/sync'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
@@ -63,6 +63,7 @@ let sent: SyncPlan | null = null
 let applied: SyncPlan | null = null
 let reply: Preflight = clean
 let failApply: string | null = null
+let outcomeOverride: Partial<SyncOutcome> = {}
 let progressDuringApply: ((emit: (progress: SyncProgress) => void) => void) | null = null
 let emitProgress: ((progress: SyncProgress) => void) | null = null
 
@@ -83,6 +84,7 @@ beforeEach(() => {
   applied = null
   reply = clean
   failApply = null
+  outcomeOverride = {}
   progressDuringApply = null
   emitProgress = null
   invokeMock.mockReset()
@@ -106,6 +108,7 @@ beforeEach(() => {
           failures: [],
           cancelled: false,
           verified: true,
+          ...outcomeOverride,
         },
         card: { ...cardState, fingerprint: 'fp-after' },
       })
@@ -149,6 +152,18 @@ describe('sync store', () => {
 
     expect(sync.selected.map((row) => row.padId)).toEqual(['A4'])
     expect(sent?.slots.map((planned) => planned.slot)).toEqual([3])
+  })
+
+  it('ticks and unticks both pads of a swap together', () => {
+    const pads = editedCard()
+    pads.swapPads('A1', 'A2')
+    const sync = useSyncStore()
+
+    sync.toggle('A2')
+    expect([...sync.deselected].sort()).toEqual(['A1', 'A2'])
+
+    sync.toggle('A1')
+    expect(sync.deselected.size).toBe(0)
   })
 
   it('select all brings the deselected rows back', () => {
@@ -330,6 +345,57 @@ describe('running the sync', () => {
     expect(pads.hasPreparedPads).toBe(true)
     expect(sync.running).toBe(false)
     expect(resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the pending work a cancelled sync never reached', async () => {
+    const pads = editedCard()
+    const sync = useSyncStore()
+    await sync.check()
+    outcomeOverride = { applied: [2], skipped: [3], cancelled: true }
+
+    await sync.run()
+
+    expect(pads.changeFor('A3')).toBeNull()
+    expect(pads.changeFor('A4')?.status).toBe('added')
+    expect(pads.padById('A4')?.audio).toEqual(diskAudio('/samples/snare.wav'))
+    expect(useCardStore().fingerprint).toBe('fp-after')
+  })
+
+  it('keeps the pending work on a pad whose write failed', async () => {
+    const pads = editedCard()
+    const sync = useSyncStore()
+    await sync.check()
+    outcomeOverride = { applied: [2], failures: [{ slot: 3, reason: 'disk full' }] }
+
+    await sync.run()
+
+    expect(pads.changeFor('A4')?.status).toBe('added')
+  })
+
+  it('keeps a change that was left out of the sync', async () => {
+    const pads = editedCard()
+    const sync = useSyncStore()
+    sync.toggle('A3')
+    await sync.check()
+
+    await sync.run()
+
+    expect(pads.changeFor('A3')?.status).toBe('added')
+    expect(pads.changeFor('A4')).toBeNull()
+    expect(sync.selected.map((row) => row.padId)).toEqual(['A3'])
+  })
+
+  it('lets go of a kept pad whose card sample the sync rewrote', async () => {
+    const pads = editedCard()
+    pads.swapPads('A1', 'A5')
+    const sync = useSyncStore()
+    await sync.check()
+    outcomeOverride = { applied: [0, 2, 3], failures: [{ slot: 4, reason: 'card full' }] }
+
+    await sync.run()
+
+    expect(pads.changeFor('A5')).toBeNull()
+    expect(pads.padById('A5')?.audio).toBeNull()
   })
 
   it('cancelling asks Rust to stop', async () => {

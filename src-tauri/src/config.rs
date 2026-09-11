@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::paths::simplified;
 
 pub const CONFIG_VERSION: u32 = 1;
 const RECENT_PROJECTS_KEPT: usize = 10;
@@ -69,6 +70,19 @@ impl Default for Config {
             theme: Theme::default(),
             window: WindowState::default(),
         }
+    }
+}
+
+impl Config {
+    fn with_simplified_paths(mut self) -> Self {
+        for folder in &mut self.browse_folders {
+            folder.path = simplified(&folder.path);
+        }
+        self.card_path = self.card_path.as_deref().map(simplified);
+        for project in &mut self.recent_projects {
+            *project = simplified(project);
+        }
+        self
     }
 }
 
@@ -172,7 +186,7 @@ fn read_or_recover(path: &Path) -> Config {
         return Config::default();
     };
     match serde_json::from_slice::<Config>(&bytes) {
-        Ok(config) => config,
+        Ok(config) => config.with_simplified_paths(),
         Err(error) => {
             eprintln!(
                 "config at {} is unreadable ({error}); starting fresh",
@@ -286,6 +300,31 @@ mod tests {
         let store = ConfigStore::load(dir.path()).expect("load");
 
         assert_eq!(store.config(), &Config::default());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn verbatim_paths_written_by_an_older_build_load_in_their_plain_form() {
+        let dir = TempDir::new().expect("temp dir");
+        let stored = serde_json::json!({
+            "version": CONFIG_VERSION,
+            "browseFolders": [{ "id": "a", "path": r"\\?\D:\samples", "addedAt": 0 }],
+            "cardPath": r"\\?\E:\",
+            "recentProjects": [r"\\?\D:\sets\live.padbandit"],
+        });
+        std::fs::write(dir.path().join(CONFIG_FILE_NAME), stored.to_string()).expect("write");
+
+        let config = ConfigStore::load(dir.path())
+            .expect("load")
+            .config()
+            .clone();
+
+        assert_eq!(config.browse_folders[0].path, PathBuf::from(r"D:\samples"));
+        assert_eq!(config.card_path, Some(PathBuf::from(r"E:\")));
+        assert_eq!(
+            config.recent_projects,
+            vec![PathBuf::from(r"D:\sets\live.padbandit")]
+        );
     }
 
     #[test]

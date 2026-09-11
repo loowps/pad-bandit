@@ -139,7 +139,7 @@ export const useUiStore = defineStore('ui', () => {
     }
 
     if (usable.length === 1) {
-      usePadsStore().assignAudio(padId, only)
+      usePadsStore().relink(padId, only)
       selectPad(padId)
       return
     }

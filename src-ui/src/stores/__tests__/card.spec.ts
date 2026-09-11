@@ -289,7 +289,7 @@ describe('card presence', () => {
     await card.restore()
     presence = { present: true, fingerprint: 'presence-after-sync' }
 
-    await card.adopt({ ...cardState, fingerprint: 'fp-after' })
+    await card.adopt({ ...cardState, fingerprint: 'fp-after' }, new Set())
     await card.checkPresence()
 
     expect(card.fingerprint).toBe('fp-after')

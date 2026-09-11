@@ -10,7 +10,13 @@ import {
   type SampleInfo,
 } from '@/domain/pad'
 import { cardPlan, clearIntent, keepIntent, type PadIntent, sampleIntent } from '@/domain/plan'
-import { editOf, projectDocument, resolveProject } from '@/domain/project'
+import {
+  diskPathsOf,
+  editOf,
+  missingSourceLabel,
+  projectDocument,
+  resolveProject,
+} from '@/domain/project'
 import type { Project } from '@/projects'
 
 function sample(fileName: string, fingerprint: string): SampleInfo {
@@ -87,6 +93,44 @@ describe('projectDocument', () => {
   })
 })
 
+describe('diskPathsOf', () => {
+  it('lists only the disk files the project still wants on a pad', () => {
+    const card = cardOf([occupiedPad(0, 'A0000001.WAV', 'fp-kick')])
+    card['A2']!.audio = diskAudio('/samples/snare.wav')
+    card['A3']!.audio = diskAudio('/samples/kept.wav')
+    const document = documentOf(card, {
+      A1: sampleIntent(card['A1']!.audio!),
+      A2: sampleIntent(diskAudio('/samples/snare.wav')),
+    })
+
+    expect(diskPathsOf(document)).toEqual(['/samples/snare.wav'])
+  })
+})
+
+describe('missingSourceLabel', () => {
+  const settings = createDefaultSettings()
+
+  it('names a disk file and the folder it was in', () => {
+    expect(
+      missingSourceLabel({ audio: { kind: 'path', path: '/samples/kick.wav' }, settings }),
+    ).toEqual({ name: 'kick.wav', location: 'It was at /samples/kick.wav' })
+  })
+
+  it('names a card sample and the pad it was saved from', () => {
+    const audio = {
+      kind: 'card' as const,
+      originSlot: 13,
+      fileName: 'B0000002.WAV',
+      fingerprint: '',
+    }
+
+    expect(missingSourceLabel({ audio, settings })).toEqual({
+      name: 'B0000002.WAV',
+      location: 'It was on the card, on pad B2',
+    })
+  })
+})
+
 describe('resolveProject', () => {
   it('reopens onto the same card with every pad and intent restored', () => {
     const card = cardOf([occupiedPad(0, 'A0000001.WAV', 'fp-kick')])
@@ -97,7 +141,7 @@ describe('resolveProject', () => {
 
     const resolution = resolveProject(document, card)
 
-    expect(resolution.orphans).toEqual([])
+    expect(resolution.orphans).toEqual({})
     expect(resolution.moved).toEqual([])
     expect(resolution.pads['A3']?.audio).toMatchObject({ kind: 'card', originSlot: 0 })
     expect(resolution.intents['A3']).toMatchObject({ kind: 'sample' })
@@ -113,7 +157,7 @@ describe('resolveProject', () => {
     expect(resolution.moved).toEqual(['A1'])
     expect(resolution.pads['A1']?.audio).toMatchObject({ kind: 'card', originSlot: 5 })
     expect(resolution.pads['A1']?.sample?.fileName).toBe('A0000006.WAV')
-    expect(resolution.orphans).toEqual([])
+    expect(resolution.orphans).toEqual({})
   })
 
   it('prefers the slot the sample was saved at when the card holds two copies', () => {
@@ -139,7 +183,7 @@ describe('resolveProject', () => {
 
     const resolution = resolveProject(document, card)
 
-    expect(resolution.orphans).toEqual([])
+    expect(resolution.orphans).toEqual({})
     expect(resolution.pads['A3']?.sample?.fileName).toBe('A0000001.WAV')
   })
 
@@ -152,8 +196,8 @@ describe('resolveProject', () => {
 
     const resolution = resolveProject(document, wiped)
 
-    expect(resolution.orphans).toMatchObject([{ padId: 'A2', audio: { fileName: 'A0000001.WAV' } }])
-    expect(resolution.orphans[0]?.settings.volume).toBe(127)
+    expect(resolution.orphans).toMatchObject({ A2: { audio: { fileName: 'A0000001.WAV' } } })
+    expect(resolution.orphans['A2']?.settings.volume).toBe(127)
     expect(resolution.summary).toMatchObject({ missing: 1, resolved: 0 })
     expect(resolution.pads['A2']?.audio).toBeNull()
   })
@@ -183,9 +227,10 @@ describe('resolveProject', () => {
     const present = resolveProject(document, cardOf([]))
     const absent = resolveProject(document, cardOf([]), new Set(['/samples/kick.wav']))
 
-    expect(present.orphans).toEqual([])
+    expect(present.orphans).toEqual({})
     expect(present.pads['A1']?.audio).toEqual(diskAudio('/samples/kick.wav'))
-    expect(absent.orphans.map((orphan) => orphan.padId)).toEqual(['A1'])
+    expect(Object.keys(absent.orphans)).toEqual(['A1'])
+    expect(absent.intents['A1']).toEqual(keepIntent())
   })
 
   it('restores a cleared pad as cleared rather than as whatever the card holds', () => {

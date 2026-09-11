@@ -17,7 +17,7 @@ import {
   writeJournal,
 } from '@/projects'
 import {
-  type OrphanPad,
+  diskPathsOf,
   type Portability,
   portabilityOf,
   projectDocument,
@@ -25,6 +25,7 @@ import {
   resolveProject,
 } from '@/domain/project'
 import { explain } from '@/domain/errors'
+import { getFileSystemGateway } from '@/filesystem'
 import { useCardStore } from '@/stores/card'
 import { useNoticesStore } from '@/stores/notices'
 import { usePadsStore } from '@/stores/pads'
@@ -40,11 +41,9 @@ export const useProjectsStore = defineStore('projects', () => {
   const name = ref<string | null>(null)
   const savedAt = ref<number | null>(null)
   const recent = ref<string[]>([])
-  const orphans = ref<OrphanPad[]>([])
   const recoverable = ref<Project | null>(null)
 
   const isNamed = computed(() => Boolean(name.value))
-  const hasOrphans = computed(() => orphans.value.length > 0)
   const portability = computed<Portability>(() => portabilityOf(documentFor(name.value ?? '')))
   const isDirty = computed(() => usePadsStore().hasPreparedPads)
   const title = computed(() => {
@@ -93,11 +92,15 @@ export const useProjectsStore = defineStore('projects', () => {
     return projectDocument(as, useCardStore().rootPath, pads.allPads, pads.intentById)
   }
 
-  function adopt(project: Project, from: string | null): void {
+  async function missingDiskPaths(project: Project): Promise<Set<string>> {
+    const paths = diskPathsOf(project)
+    return new Set(paths.length > 0 ? await getFileSystemGateway().missingFiles(paths) : [])
+  }
+
+  async function adopt(project: Project, from: string | null): Promise<void> {
     const pads = usePadsStore()
-    const resolution = resolveProject(project, pads.cardPads)
+    const resolution = resolveProject(project, pads.cardPads, await missingDiskPaths(project))
     pads.applyProject(resolution)
-    orphans.value = resolution.orphans
     announce(project, resolution)
     path.value = from
     name.value = project.name
@@ -152,7 +155,7 @@ export const useProjectsStore = defineStore('projects', () => {
         return false
       }
       const stored = await openProject(chosen)
-      adopt(stored.project, stored.path)
+      await adopt(stored.project, stored.path)
       useNoticesStore().resolve(PROJECT_NOTICE)
       await refresh()
       return true
@@ -167,7 +170,6 @@ export const useProjectsStore = defineStore('projects', () => {
     path.value = null
     name.value = null
     savedAt.value = null
-    orphans.value = []
     const notices = useNoticesStore()
     notices.resolve(PROJECT_NOTICE)
     notices.resolve(REOPENED_NOTICE)
@@ -197,11 +199,16 @@ export const useProjectsStore = defineStore('projects', () => {
 
   let recoveredPath: string | null = null
 
-  function restoreRecovered(): void {
+  async function restoreRecovered(): Promise<void> {
     if (!recoverable.value) {
       return
     }
-    adopt(recoverable.value, recoveredPath)
+    try {
+      await adopt(recoverable.value, recoveredPath)
+    } catch (cause) {
+      report(cause, 'The unsaved work could not be restored')
+      return
+    }
     savedAt.value = null
     recoverable.value = null
   }
@@ -314,12 +321,10 @@ export const useProjectsStore = defineStore('projects', () => {
     name,
     savedAt,
     recent,
-    orphans,
     recoverable,
     isNamed,
     isDirty,
     title,
-    hasOrphans,
     portability,
     documentFor,
     refresh,

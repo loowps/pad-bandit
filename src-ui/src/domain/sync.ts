@@ -64,6 +64,29 @@ export function previewRows(changes: PadChange[], pads: Record<PadId, Pad>): Pre
   return rows
 }
 
+export function linkedPadIds(rows: PreviewRow[], padId: PadId): PadId[] {
+  const bySlot = new Map(rows.map((row) => [row.slot, row]))
+  const linked = new Set<PadId>()
+  const waiting = rows.filter((row) => row.padId === padId)
+
+  for (let row = waiting.pop(); row; row = waiting.pop()) {
+    if (linked.has(row.padId)) {
+      continue
+    }
+    linked.add(row.padId)
+    const slot = row.slot
+    const origin = row.action.kind === 'move' ? bySlot.get(row.action.fromSlot) : undefined
+    if (origin) {
+      waiting.push(origin)
+    }
+    waiting.push(
+      ...rows.filter((other) => other.action.kind === 'move' && other.action.fromSlot === slot),
+    )
+  }
+
+  return [...linked]
+}
+
 function headlineOf(action: PlannedAction): string {
   switch (action.kind) {
     case 'settings':
@@ -106,6 +129,17 @@ export function outcomeSummary(outcome: SyncOutcome): string {
     parts.push('the card did not read back as expected')
   }
   return parts.join(' · ')
+}
+
+export function rewrittenSlots(plan: SyncPlan, outcome: SyncOutcome): Set<number> {
+  const applied = new Set(outcome.applied)
+  const rewritten = new Set(applied)
+  for (const planned of plan.slots) {
+    if (applied.has(planned.slot) && planned.action.kind === 'move') {
+      rewritten.add(planned.action.fromSlot)
+    }
+  }
+  return rewritten
 }
 
 export function outcomeWentWell(outcome: SyncOutcome): boolean {

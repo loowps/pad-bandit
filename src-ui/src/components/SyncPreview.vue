@@ -46,6 +46,8 @@ function problemText(problem: Problem): string {
       return `${megabytes(problem.bytes)} is over the ${megabytes(problem.cap)} limit for one pad.`
     case 'nothingAtOriginSlot':
       return 'The pad it moves from is empty.'
+    case 'unpairedMove':
+      return `${padIdForSlot(problem.fromSlot)} has to be synced with it. Tick both or neither.`
     case 'unknownSlot':
       return 'That pad is not on the card.'
   }

@@ -22,8 +22,12 @@ const label = computed(() => numberInBank(props.pad.slot))
 const isSelected = computed(() => ui.selectedPadId === props.pad.id)
 const hasAudio = computed(() => props.pad.audio !== null)
 const change = computed(() => pads.changeFor(props.pad.id))
+const isMissing = computed(() => pads.missingFor(props.pad.id) !== null)
 
 const state = computed(() => {
+  if (isMissing.value) {
+    return 'missing'
+  }
   if (hasAudio.value) {
     return change.value ? 'unsynced' : 'synced'
   }
@@ -40,6 +44,9 @@ const fillState = computed(() => {
 })
 
 const padLabel = computed(() => {
+  if (isMissing.value) {
+    return `Pad ${props.pad.id}, source missing`
+  }
   const status = change.value?.status
   return status ? `Pad ${props.pad.id}, ${CHANGE_LABELS[status]}` : `Pad ${props.pad.id}`
 })
@@ -168,6 +175,13 @@ function handleDrop(): void {
   color: var(--pad-pending-label);
   background-color: var(--pad-pending-surface);
   border-color: var(--pad-unsynced-border);
+  border-style: dashed;
+}
+
+.pad[data-state='missing'] {
+  color: var(--status-danger);
+  background-color: var(--pad-pending-surface);
+  border-color: var(--status-danger);
   border-style: dashed;
 }
 

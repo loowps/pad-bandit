@@ -71,6 +71,7 @@ let recent: string[] = []
 let journalled: Journal | null = null
 let picked: string | null = SET_PATH
 let title = 'Pad Bandit'
+let missingOnDisk: string[] = []
 
 function remember(path: string): void {
   recent = [path, ...recent.filter((known) => known !== path)]
@@ -83,6 +84,7 @@ beforeEach(() => {
   journalled = null
   picked = SET_PATH
   title = 'Pad Bandit'
+  missingOnDisk = []
   menuHandler = null
   invokeMock.mockReset()
   invokeMock.mockImplementation((command, args) => {
@@ -90,9 +92,12 @@ beforeEach(() => {
       project?: Project
       journal?: Journal
       path?: string | null
+      paths?: string[]
       title?: string
     }
     switch (command) {
+      case 'files_missing':
+        return Promise.resolve(payload.paths!.filter((path) => missingOnDisk.includes(path)))
       case 'project_pick_to_save':
       case 'project_pick_to_open':
         return Promise.resolve(picked)
@@ -214,10 +219,42 @@ describe('projects store', () => {
     expect(pads.padById('A3')?.audio).toEqual(diskAudio('/samples/kick.wav'))
     expect(pads.padById('A3')?.settings.volume).toBe(40)
     expect(pads.changeFor('A3')?.status).toBe('added')
-    expect(projects.hasOrphans).toBe(false)
+    expect(pads.missingCount).toBe(0)
     expect(
       useNoticesStore().entries.find((entry) => entry.source === 'project:reopened'),
     ).toMatchObject({ severity: 'info', detail: expect.stringContaining('1 resolved') })
+  })
+
+  it('reopens a pad whose disk file has moved as missing, not as resolved', async () => {
+    const pads = loadedPads()
+    pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+    pads.updateSettings('A3', { volume: 40 })
+    const projects = useProjectsStore()
+    await projects.save()
+    pads.discardChanges()
+    missingOnDisk = ['/samples/kick.wav']
+
+    expect(await projects.open(SET_PATH)).toBe(true)
+
+    expect(pads.padById('A3')?.audio).toBeNull()
+    expect(pads.changeFor('A3')).toBeNull()
+    expect(pads.missingFor('A3')).toMatchObject({
+      audio: { kind: 'path', path: '/samples/kick.wav' },
+      settings: { volume: 40 },
+    })
+    expect(
+      useNoticesStore().entries.find((entry) => entry.source === 'project:reopened'),
+    ).toMatchObject({ severity: 'warning', detail: expect.stringContaining('1 source missing') })
+  })
+
+  it('asks the backend only about disk files, and not at all when there are none', async () => {
+    loadedPads()
+    const projects = useProjectsStore()
+    await projects.save()
+
+    await projects.open(SET_PATH)
+
+    expect(invokeMock).not.toHaveBeenCalledWith('files_missing', expect.anything())
   })
 
   it('reports a project that cannot be opened instead of throwing', async () => {
@@ -269,7 +306,7 @@ describe('projects store', () => {
     expect(await projects.offerRecovery()).toBe(true)
     expect(pads.changeFor('A3')).toBeNull()
 
-    projects.restoreRecovered()
+    await projects.restoreRecovered()
 
     expect(pads.changeFor('A3')?.status).toBe('added')
     expect(projects.path).toBe(SET_PATH)

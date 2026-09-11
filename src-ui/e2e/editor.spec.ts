@@ -123,6 +123,40 @@ test('saves the pending work as a project and reopens it', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Pad A1, sample removed' })).toBeVisible()
 })
 
+test('a saved sample that has moved reopens as missing and can be re-linked', async ({ page }) => {
+  await stubBackend(page, {
+    pickedFolder: '/samples',
+    entries: {
+      ...samples,
+      '/samples': [...samples['/samples']!, entry('/samples/moved.wav', false, 'wav')],
+    },
+    card: cardWithFilledSlots('/samples', 3),
+    missingFiles: ['/samples/moved.wav'],
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Add audio folder' }).click()
+  await page
+    .getByRole('treeitem', { name: 'moved.wav' })
+    .dragTo(page.getByRole('button', { name: 'Pad A4', exact: true }))
+  await expect(page.getByRole('button', { name: 'Pad A4, sample added' })).toBeVisible()
+  await chooseFromMenu(page, { kind: 'saveAs' })
+  await expect(page.getByText('1 from disc (portable)')).toBeVisible()
+  await page.getByRole('button', { name: 'Discard changes' }).click()
+
+  await chooseFromMenu(page, { kind: 'openRecent', path: STUB_PROJECT_PATH })
+
+  const missingPad = page.getByRole('button', { name: 'Pad A4, source missing' })
+  await expect(missingPad).toBeVisible()
+  await expect(page.getByText('1 saved pad lost its source')).toBeVisible()
+  await missingPad.click()
+  await expect(page.getByText('moved.wav can no longer be found')).toBeVisible()
+
+  await page.getByRole('treeitem', { name: 'kick.wav' }).dragTo(missingPad)
+
+  await expect(page.getByRole('button', { name: 'Pad A4, sample added' })).toBeVisible()
+  await expect(page.getByText('1 saved pad lost its source')).toBeHidden()
+})
+
 test('starting a new project from the menu drops the pending work', async ({ page }) => {
   await page.getByRole('button', { name: 'Choose card folder…' }).click()
   await expect(page.getByText('Card folder recognised')).toBeVisible()
@@ -409,7 +443,9 @@ test('right-clicking a sample offers to show it in the file manager', async ({ p
 
   await expect(menu).toBeHidden()
   await expect
-    .poll(async () => (await backendCalls(page)).filter((call) => call.command === 'reveal_in_file_manager'))
+    .poll(async () =>
+      (await backendCalls(page)).filter((call) => call.command === 'reveal_in_file_manager'),
+    )
     .toEqual([{ command: 'reveal_in_file_manager', args: { path: '/samples/kick.wav' } }])
 })
 

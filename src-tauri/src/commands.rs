@@ -75,6 +75,11 @@ pub fn list_dir(state: State<'_, AppState>, path: PathBuf) -> Result<Vec<Entry>>
 }
 
 #[tauri::command(async)]
+pub fn files_missing(state: State<'_, AppState>, paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    crate::fs::missing_files(&state.scopes(), paths)
+}
+
+#[tauri::command(async)]
 pub fn reveal_in_file_manager(state: State<'_, AppState>, path: PathBuf) -> Result<()> {
     crate::fs::reveal(&state.scopes(), &path)
 }

@@ -30,6 +30,11 @@ pub enum Error {
     #[error("the card changed since this plan was built")]
     CardChanged,
 
+    #[error(
+        "slot {slot} takes the sample from slot {from_slot}, but the plan leaves slot {from_slot} pointing at it"
+    )]
+    UnpairedMove { slot: u8, from_slot: u8 },
+
     #[error("a sync is already running")]
     SyncInProgress,
 
@@ -75,6 +80,7 @@ impl Error {
             Self::UnknownSlot { .. } => "unknownSlot",
             Self::NoCardSelected => "noCardSelected",
             Self::CardChanged => "cardChanged",
+            Self::UnpairedMove { .. } => "unpairedMove",
             Self::SyncInProgress => "syncInProgress",
             Self::UnknownFolder(_) => "unknownFolder",
             Self::UngrantedFile(_) => "ungrantedFile",
@@ -121,6 +127,10 @@ mod tests {
             Error::UnknownSlot { slot: 200 },
             Error::NoCardSelected,
             Error::CardChanged,
+            Error::UnpairedMove {
+                slot: 0,
+                from_slot: 1,
+            },
             Error::SyncInProgress,
             Error::UnknownFolder("f1".into()),
             Error::UngrantedFile(PathBuf::from("/x")),

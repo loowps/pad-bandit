@@ -1,6 +1,7 @@
 import type { SampleInfo } from '@/card'
 import {
   type AudioRef,
+  audioSourceName,
   cardAudio,
   diskAudio,
   type Pad,
@@ -18,10 +19,14 @@ import {
   type ProjectSlot,
 } from '@/projects'
 
-export interface OrphanPad {
-  padId: PadId
+export interface MissingSource {
   audio: ProjectAudioRef
   settings: PadSettings
+}
+
+export interface MissingSourceLabel {
+  name: string
+  location: string
 }
 
 export interface ResolutionSummary {
@@ -34,7 +39,7 @@ export interface ResolutionSummary {
 export interface ProjectResolution {
   pads: Record<PadId, Pad>
   intents: Record<PadId, PadIntent>
-  orphans: OrphanPad[]
+  orphans: Record<PadId, MissingSource>
   moved: PadId[]
   summary: ResolutionSummary
 }
@@ -49,6 +54,23 @@ export function portabilityOf(project: Project): Portability {
   return {
     fromDisk: refs.filter((audio) => audio.kind === 'path').length,
     fromCard: refs.filter((audio) => audio.kind === 'card').length,
+  }
+}
+
+export function diskPathsOf(project: Project): string[] {
+  return project.slots.flatMap((slot) =>
+    slot.intent === 'sample' && slot.audio?.kind === 'path' ? [slot.audio.path] : [],
+  )
+}
+
+export function missingSourceLabel(source: MissingSource): MissingSourceLabel {
+  const { audio } = source
+  if (audio.kind === 'path') {
+    return { name: audioSourceName(audio), location: `It was at ${audio.path}` }
+  }
+  return {
+    name: audio.fileName,
+    location: `It was on the card, on pad ${padIdForSlot(audio.originSlot)}`,
   }
 }
 
@@ -138,7 +160,7 @@ export function resolveProject(
   const index = samplesByFingerprint(cardPads)
   const pads: Record<PadId, Pad> = {}
   const intents: Record<PadId, PadIntent> = {}
-  const orphans: OrphanPad[] = []
+  const orphans: Record<PadId, MissingSource> = {}
   const moved: PadId[] = []
   let resolved = 0
   let keeping = 0
@@ -160,7 +182,7 @@ export function resolveProject(
     const id = base.id
     const settings = settingsOf(slot.edit)
     const orphaned = (audio: ProjectAudioRef) => {
-      orphans.push({ padId: id, audio, settings })
+      orphans[id] = { audio, settings }
       pads[id] = { ...base, settings: { ...base.settings } }
       intents[id] = keepIntent()
     }
@@ -209,6 +231,6 @@ export function resolveProject(
     intents,
     orphans,
     moved,
-    summary: { resolved, moved: moved.length, missing: orphans.length, keeping },
+    summary: { resolved, moved: moved.length, missing: Object.keys(orphans).length, keeping },
   }
 }

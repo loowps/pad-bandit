@@ -1,6 +1,3 @@
-const VERBATIM_UNC_PREFIX = '\\\\?\\UNC\\'
-const VERBATIM_DISK_PREFIX = /^\\\\\?\\([A-Za-z]:\\)/
-
 const REVEAL_LABELS = {
   windows: 'Show in Explorer',
   mac: 'Reveal in Finder',
@@ -15,11 +12,4 @@ export function revealLabel(userAgent: string): string {
     return REVEAL_LABELS.windows
   }
   return REVEAL_LABELS.other
-}
-
-export function simplifiedPath(path: string): string {
-  if (path.startsWith(VERBATIM_UNC_PREFIX)) {
-    return `\\\\${path.slice(VERBATIM_UNC_PREFIX.length)}`
-  }
-  return path.replace(VERBATIM_DISK_PREFIX, '$1')
 }

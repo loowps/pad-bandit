@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -73,6 +73,11 @@ pub enum Problem {
         slot: u8,
         from_slot: u8,
     },
+    #[serde(rename_all = "camelCase")]
+    UnpairedMove {
+        slot: u8,
+        from_slot: u8,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -119,6 +124,25 @@ pub fn card_fingerprint(card: &LoadedCard) -> String {
     card.state().fingerprint
 }
 
+pub fn unpaired_moves(plan: &SyncPlan) -> Vec<(u8, u8)> {
+    let refilled: BTreeSet<u8> = plan
+        .slots
+        .iter()
+        .filter(|planned| !matches!(planned.action, PlannedAction::Settings))
+        .map(|planned| planned.slot)
+        .collect();
+
+    plan.slots
+        .iter()
+        .filter_map(|planned| match planned.action {
+            PlannedAction::Move { from_slot } if !refilled.contains(&from_slot) => {
+                Some((planned.slot, from_slot))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 pub fn preflight(
     scopes: &Scopes,
     card: &LoadedCard,
@@ -126,6 +150,7 @@ pub fn preflight(
     budget: &Budget,
 ) -> Preflight {
     let mut problems = Vec::new();
+    let unpaired = unpaired_moves(plan);
     let mut sizes = Vec::new();
     let mut bytes_to_write = 0u64;
     let mut bytes_to_free = 0u64;
@@ -151,6 +176,11 @@ pub fn preflight(
             PlannedAction::Move { from_slot } => {
                 if !occupied.contains_key(from_slot) {
                     problems.push(Problem::NothingAtOriginSlot {
+                        slot,
+                        from_slot: *from_slot,
+                    });
+                } else if unpaired.contains(&(slot, *from_slot)) {
+                    problems.push(Problem::UnpairedMove {
                         slot,
                         from_slot: *from_slot,
                     });
@@ -526,6 +556,62 @@ mod tests {
                 from_slot: 99
             })
         ));
+    }
+
+    fn move_slot(slot: u8, from_slot: u8) -> PlannedSlot {
+        PlannedSlot {
+            slot,
+            action: PlannedAction::Move { from_slot },
+            edit: edit(),
+        }
+    }
+
+    #[test]
+    fn half_of_a_swap_is_refused_but_the_whole_swap_is_not() {
+        let f = fixture();
+        let budget = Budget::on(1 << 30);
+
+        let half = f.plan(vec![move_slot(0, 1)]);
+        let whole = f.plan(vec![move_slot(0, 1), move_slot(1, 0)]);
+
+        assert_eq!(
+            preflight(&f.scopes, &f.card(), &half, &budget).problems,
+            vec![Problem::UnpairedMove {
+                slot: 0,
+                from_slot: 1
+            }]
+        );
+        let report = preflight(&f.scopes, &f.card(), &whole, &budget);
+        assert!(report.ok(), "{:?}", report.problems);
+    }
+
+    #[test]
+    fn a_move_is_paired_by_anything_that_empties_or_refills_its_origin() {
+        let emptied = SyncPlan {
+            card_fingerprint: String::new(),
+            slots: vec![
+                move_slot(5, 0),
+                PlannedSlot {
+                    slot: 0,
+                    action: PlannedAction::Delete,
+                    edit: edit(),
+                },
+            ],
+        };
+        let only_retuned = SyncPlan {
+            card_fingerprint: String::new(),
+            slots: vec![
+                move_slot(5, 0),
+                PlannedSlot {
+                    slot: 0,
+                    action: PlannedAction::Settings,
+                    edit: edit(),
+                },
+            ],
+        };
+
+        assert!(unpaired_moves(&emptied).is_empty());
+        assert_eq!(unpaired_moves(&only_retuned), vec![(5, 0)]);
     }
 
     #[test]

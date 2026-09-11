@@ -11,10 +11,12 @@ import {
   type SyncProgress,
 } from '@/sync'
 import {
+  linkedPadIds,
   outcomeSummary,
   outcomeWentWell,
   type PreviewRow,
   previewRows,
+  rewrittenSlots,
   syncPlan,
 } from '@/domain/sync'
 import { explain } from '@/domain/errors'
@@ -81,8 +83,13 @@ export const useSyncStore = defineStore('sync', () => {
 
   function toggle(padId: PadId): void {
     const next = new Set(deselected.value)
-    if (!next.delete(padId)) {
-      next.add(padId)
+    const turningOff = !next.has(padId)
+    for (const id of linkedPadIds(rows.value, padId)) {
+      if (turningOff) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
     }
     deselected.value = next
   }
@@ -149,8 +156,9 @@ export const useSyncStore = defineStore('sync', () => {
       stop = await onSyncProgress((update) => {
         progress.value = update
       })
-      const result = await applySync(planNow(card.fingerprint))
-      await card.adopt(result.card)
+      const plan = planNow(card.fingerprint)
+      const result = await applySync(plan)
+      await card.adopt(result.card, rewrittenSlots(plan, result.outcome))
       deselected.value = new Set()
       outcome.value = result.outcome
       report.value = null

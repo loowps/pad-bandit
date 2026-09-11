@@ -27,7 +27,7 @@ import {
   sampleIntent,
 } from '@/domain/plan'
 import { type DropMode, planDrop } from '@/domain/fill'
-import type { ProjectResolution } from '@/domain/project'
+import type { MissingSource, ProjectResolution } from '@/domain/project'
 
 export interface Bank {
   name: BankName
@@ -39,6 +39,7 @@ interface FilledPad {
   slot: number
   snapshot: PadSnapshot
   intent: PadIntent
+  missing: MissingSource | null
 }
 
 interface FillRecord {
@@ -73,6 +74,9 @@ export const usePadsStore = defineStore('pads', () => {
   const snapshotById = shallowRef<Record<PadId, PadSnapshot>>(takeSnapshots())
   const intentById = ref<Record<PadId, PadIntent>>(allKeeping())
   const fillRecord = shallowRef<FillRecord | null>(null)
+  const missingById = ref<Record<PadId, MissingSource>>({})
+
+  const missingCount = computed(() => Object.keys(missingById.value).length)
 
   const banks = computed<Bank[]>(() =>
     BANK_NAMES.map((name, index) => ({
@@ -122,6 +126,22 @@ export const usePadsStore = defineStore('pads', () => {
     return assignedAudioPaths.value.has(path)
   }
 
+  function missingFor(id: PadId): MissingSource | null {
+    return missingById.value[id] ?? null
+  }
+
+  function setMissing(id: PadId, source: MissingSource | null): void {
+    if (source) {
+      missingById.value[id] = source
+    } else {
+      delete missingById.value[id]
+    }
+  }
+
+  function forgetMissing(id: PadId): void {
+    setMissing(id, null)
+  }
+
   function updateSettings(id: PadId, changes: Partial<PadSettings>): void {
     const pad = byId.value[id]
     if (pad) {
@@ -143,6 +163,16 @@ export const usePadsStore = defineStore('pads', () => {
     pad.audio = audio
     pad.sample = sampleBehind(audio)
     intentById.value[id] = audio ? sampleIntent(audio) : clearIntent()
+    setMissing(id, null)
+  }
+
+  function relink(id: PadId, audio: AudioRef): void {
+    const missing = missingFor(id)
+    assignAudio(id, audio)
+    const pad = byId.value[id]
+    if (missing && pad) {
+      pad.settings = { ...missing.settings }
+    }
   }
 
   function fillFrom(startSlot: number, sources: AudioRef[], mode: DropMode = 'fill'): PadId[] {
@@ -156,6 +186,7 @@ export const usePadsStore = defineStore('pads', () => {
               slot: pad.slot,
               snapshot: snapshotOf(pad),
               intent: intentById.value[padId] ?? keepIntent(),
+              missing: missingFor(padId),
             },
           ]
         : []
@@ -194,9 +225,10 @@ export const usePadsStore = defineStore('pads', () => {
   }
 
   function undoFill(): void {
-    for (const { padId, slot, snapshot, intent } of fillRecord.value?.filled ?? []) {
+    for (const { padId, slot, snapshot, intent, missing } of fillRecord.value?.filled ?? []) {
       byId.value[padId] = padFromSnapshot(padId, slot, snapshot)
       intentById.value[padId] = intent
+      setMissing(padId, missing)
     }
     forgetFill()
   }
@@ -215,6 +247,7 @@ export const usePadsStore = defineStore('pads', () => {
     pad.sample = null
     pad.settings = createDefaultSettings()
     intentById.value[id] = clearIntent()
+    setMissing(id, null)
   }
 
   function revertPad(id: PadId): void {
@@ -231,6 +264,7 @@ export const usePadsStore = defineStore('pads', () => {
     for (const id of preparedPadIds.value) {
       revertPad(id)
     }
+    missingById.value = {}
     forgetFill()
   }
 
@@ -244,6 +278,31 @@ export const usePadsStore = defineStore('pads', () => {
     adoptSnapshot()
   }
 
+  function adoptSync(state: CardState, rewritten: ReadonlySet<number>): void {
+    const untouched = allPads.value.filter(
+      (pad) =>
+        !rewritten.has(pad.slot) &&
+        !(pad.audio?.kind === 'card' && rewritten.has(pad.audio.originSlot)),
+    )
+    const pending = untouched
+      .filter((pad) => isPrepared(pad.id))
+      .map((pad) => ({
+        pad: padFromSnapshot(pad.id, pad.slot, snapshotOf(pad)),
+        intent: intentById.value[pad.id] ?? keepIntent(),
+      }))
+    const stillMissing = untouched.flatMap((pad) => {
+      const source = missingFor(pad.id)
+      return source ? [[pad.id, source] as const] : []
+    })
+
+    loadFromCard(state)
+    for (const { pad, intent } of pending) {
+      byId.value[pad.id] = pad
+      intentById.value[pad.id] = intent
+    }
+    missingById.value = Object.fromEntries(stillMissing)
+  }
+
   function intentAfterExchange(pad: Pad, had: AudioRef | null): void {
     if (pad.audio) {
       intentById.value[pad.id] = sampleIntent(pad.audio)
@@ -254,6 +313,9 @@ export const usePadsStore = defineStore('pads', () => {
 
   function exchange(first: Pad, second: Pad): void {
     const [hadFirst, hadSecond] = [first.audio, second.audio]
+    const [missingFirst, missingSecond] = [missingFor(first.id), missingFor(second.id)]
+    setMissing(first.id, missingSecond)
+    setMissing(second.id, missingFirst)
     ;[first.audio, second.audio] = [hadSecond, hadFirst]
     ;[first.sample, second.sample] = [second.sample, first.sample]
     ;[first.settings, second.settings] = [second.settings, first.settings]
@@ -290,12 +352,14 @@ export const usePadsStore = defineStore('pads', () => {
   function adoptSnapshot(): void {
     snapshotById.value = takeSnapshots()
     intentById.value = allKeeping()
+    missingById.value = {}
     forgetFill()
   }
 
   function applyProject(resolution: ProjectResolution): void {
     byId.value = resolution.pads
     intentById.value = resolution.intents
+    missingById.value = { ...resolution.orphans }
     forgetFill()
   }
 
@@ -314,17 +378,22 @@ export const usePadsStore = defineStore('pads', () => {
     plan,
     preparedPadIds,
     hasPreparedPads,
+    missingCount,
     padById,
     changeFor,
     isPrepared,
     usesAudioPath,
+    missingFor,
+    forgetMissing,
     updateSettings,
     assignAudio,
+    relink,
     fillFrom,
     clearPad,
     revertPad,
     discardChanges,
     loadFromCard,
+    adoptSync,
     applyProject,
     swapPads,
     swapBanks,
