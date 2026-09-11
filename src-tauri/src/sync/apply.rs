@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,8 +8,8 @@ use serde::Serialize;
 
 use crate::audio::encode;
 use crate::card::{
-    self, LoadedCard, PAD_INFO_FILE_NAME, PadEdit, PadRecord, emptied_record, recorded_record,
-    sample_file_name,
+    self, LoadedCard, PAD_COUNT, PAD_INFO_FILE_NAME, PadEdit, PadRecord, emptied_record,
+    recorded_record, sample_file_name,
 };
 use crate::error::{Error, Result};
 use crate::paths::Scopes;
@@ -85,6 +86,13 @@ pub struct Apply<'a> {
 }
 
 pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcome> {
+    if let Some(planned) = plan
+        .slots
+        .iter()
+        .find(|planned| usize::from(planned.slot) >= PAD_COUNT)
+    {
+        return Err(Error::UnknownSlot { slot: planned.slot });
+    }
     if let Some(&(slot, from_slot)) = crate::sync::unpaired_moves(plan).first() {
         return Err(Error::UnpairedMove { slot, from_slot });
     }
@@ -94,6 +102,8 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
     context.scopes.writable(&samples)?;
 
     back_up_pad_info(context.card, context.app_data)?;
+    remove_disposable_leftovers(&samples);
+    let pad_info = ReservedPadInfo::reserve(context.scopes, context.card, &samples)?;
 
     let bytes_total: u64 = plan
         .slots
@@ -126,14 +136,17 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
         .iter()
         .partition(|planned| matches!(planned.action, PlannedAction::Move { .. }));
 
-    rename_moved_samples(
+    if let Err(error) = rename_moved_samples(
         context,
         &samples,
         &moves,
         &mut records,
         &mut state,
         &mut outcome,
-    )?;
+    ) {
+        pad_info.release();
+        return Err(error);
+    }
 
     for planned in rest {
         if cancelled(&context.cancel) {
@@ -167,7 +180,7 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
     }
 
     (context.report)(state.at(None, Phase::Recording));
-    write_pad_info(context.scopes, context.card, &samples, &records)?;
+    pad_info.commit(context.card, &records)?;
 
     (context.report)(state.at(None, Phase::Verifying));
     outcome.verified = verify(context.scopes, &card_root, &records)?;
@@ -286,69 +299,249 @@ fn rename_moved_samples(
     }
     (context.report)(state.at(None, Phase::Moving));
 
-    let mut parked: BTreeMap<u8, (PathBuf, PathBuf)> = BTreeMap::new();
-    for planned in moves {
-        let PlannedAction::Move { from_slot } = planned.action else {
-            continue;
-        };
-        if parked.contains_key(&from_slot) {
-            continue;
+    let mut shuffle = Shuffle::default();
+    match shuffle.run(context, samples, moves, records, state, outcome) {
+        Ok(()) => {
+            shuffle.finish();
+            (context.report)(state.at(None, Phase::Deleting));
+            Ok(())
         }
-        let Some(name) = sample_names(context.card, from_slot).into_iter().next() else {
-            continue;
-        };
-        let current = samples.join(&name);
-        let park = samples.join(format!("{from_slot}.{TEMPORARY_SUFFIX}"));
-        std::fs::rename(&current, &park)?;
-        parked.insert(from_slot, (park, current));
+        Err(error) => {
+            shuffle.roll_back();
+            Err(error)
+        }
     }
-
-    for planned in moves {
-        let PlannedAction::Move { from_slot } = planned.action else {
-            continue;
-        };
-        let Some((park, _)) = parked.remove(&from_slot) else {
-            outcome.failures.push(SlotFailure {
-                slot: planned.slot,
-                reason: format!("nothing left to move from slot {from_slot}"),
-            });
-            continue;
-        };
-
-        let destination = samples.join(sample_file_name(planned.slot));
-        context.scopes.writable(&destination)?;
-        std::fs::rename(&park, &destination)?;
-        card::write_sample_index(&destination, planned.slot)?;
-
-        let base = record_at(context.card, from_slot)?;
-        records.insert(planned.slot, card::edited_record(&base, &planned.edit));
-
-        state.slots_done += 1;
-        outcome.applied.push(planned.slot);
-        (context.report)(state.at(Some(planned.slot), Phase::Moving));
-    }
-
-    for (park, original) in parked.into_values() {
-        std::fs::rename(&park, &original)?;
-    }
-
-    (context.report)(state.at(None, Phase::Deleting));
-    Ok(())
 }
 
-fn write_pad_info(
-    scopes: &Scopes,
-    card: &LoadedCard,
-    samples: &Path,
-    records: &BTreeMap<u8, PadRecord>,
-) -> Result<()> {
-    let path = samples.join(PAD_INFO_FILE_NAME);
-    scopes.writable(&path)?;
+struct Parked {
+    park: PathBuf,
+    original: PathBuf,
+}
 
-    let patched = card::patch_pad_records(card.pad_info_raw(), records)?;
-    let temporary = path.with_extension(TEMPORARY_SUFFIX);
-    std::fs::write(&temporary, &patched)?;
-    std::fs::rename(&temporary, &path)?;
+impl Parked {
+    fn park(original: PathBuf, park: PathBuf) -> Result<Self> {
+        std::fs::rename(&original, &park)?;
+        Ok(Self { park, original })
+    }
+
+    fn put_back(&self) {
+        let _ = std::fs::rename(&self.park, &self.original);
+    }
+
+    fn current_name(&self) -> &str {
+        self.original
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+    }
+}
+
+struct Placed {
+    destination: PathBuf,
+    from_slot: u8,
+    parked: Parked,
+}
+
+impl Placed {
+    fn place(&self, scopes: &Scopes, slot: u8) -> Result<()> {
+        scopes.writable(&self.destination)?;
+        std::fs::rename(&self.parked.park, &self.destination)?;
+        card::write_sample_index(&self.destination, slot)
+    }
+
+    fn unplace(&self) {
+        if std::fs::rename(&self.destination, &self.parked.park).is_ok() {
+            let _ = card::write_sample_index(&self.parked.park, self.from_slot);
+        }
+    }
+}
+
+#[derive(Default)]
+struct Shuffle {
+    origins: BTreeMap<u8, Parked>,
+    replaced: Vec<Parked>,
+    placed: Vec<Placed>,
+}
+
+impl Shuffle {
+    fn run(
+        &mut self,
+        context: &mut Apply<'_>,
+        samples: &Path,
+        moves: &[&PlannedSlot],
+        records: &mut BTreeMap<u8, PadRecord>,
+        state: &mut Walk,
+        outcome: &mut SyncOutcome,
+    ) -> Result<()> {
+        self.park_origins(context.card, samples, moves)?;
+        self.park_replaced(context.card, samples, moves)?;
+
+        for planned in moves {
+            let PlannedAction::Move { from_slot } = planned.action else {
+                continue;
+            };
+            let Some(parked) = self.origins.remove(&from_slot) else {
+                outcome.failures.push(SlotFailure {
+                    slot: planned.slot,
+                    reason: format!("nothing left to move from slot {from_slot}"),
+                });
+                continue;
+            };
+
+            let destination = samples.join(card::sample_file_name_keeping_extension(
+                planned.slot,
+                parked.current_name(),
+            ));
+            let placed = Placed {
+                destination,
+                from_slot,
+                parked,
+            };
+            let placing = placed.place(context.scopes, planned.slot);
+            self.placed.push(placed);
+            placing?;
+
+            let base = record_at(context.card, from_slot)?;
+            records.insert(planned.slot, card::edited_record(&base, &planned.edit));
+
+            state.slots_done += 1;
+            outcome.applied.push(planned.slot);
+            (context.report)(state.at(Some(planned.slot), Phase::Moving));
+        }
+        Ok(())
+    }
+
+    fn park_origins(
+        &mut self,
+        card: &LoadedCard,
+        samples: &Path,
+        moves: &[&PlannedSlot],
+    ) -> Result<()> {
+        for planned in moves {
+            let PlannedAction::Move { from_slot } = planned.action else {
+                continue;
+            };
+            if self.origins.contains_key(&from_slot) {
+                continue;
+            }
+            let Some(name) = sample_names(card, from_slot).into_iter().next() else {
+                continue;
+            };
+            let park = samples.join(format!("{from_slot}.{TEMPORARY_SUFFIX}"));
+            self.origins
+                .insert(from_slot, Parked::park(samples.join(&name), park)?);
+        }
+        Ok(())
+    }
+
+    fn park_replaced(
+        &mut self,
+        card: &LoadedCard,
+        samples: &Path,
+        moves: &[&PlannedSlot],
+    ) -> Result<()> {
+        for planned in moves {
+            if self.origins.contains_key(&planned.slot) {
+                continue;
+            }
+            for name in sample_names(card, planned.slot) {
+                let original = samples.join(&name);
+                if original.is_file() {
+                    let park =
+                        samples.join(format!("{}.replaced.{TEMPORARY_SUFFIX}", planned.slot));
+                    self.replaced.push(Parked::park(original, park)?);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(self) {
+        for parked in self.replaced {
+            let _ = std::fs::remove_file(parked.park);
+        }
+    }
+
+    fn roll_back(self) {
+        for placed in self.placed.iter().rev() {
+            placed.unplace();
+        }
+        self.placed
+            .iter()
+            .map(|placed| &placed.parked)
+            .chain(self.origins.values())
+            .chain(&self.replaced)
+            .for_each(Parked::put_back);
+    }
+}
+
+struct ReservedPadInfo {
+    path: PathBuf,
+    temporary: PathBuf,
+}
+
+impl ReservedPadInfo {
+    fn reserve(scopes: &Scopes, card: &LoadedCard, samples: &Path) -> Result<Self> {
+        let path = scopes.writable(&samples.join(PAD_INFO_FILE_NAME))?;
+        let temporary = path.with_extension(TEMPORARY_SUFFIX);
+        if let Err(error) = write_to_disk(&temporary, card.pad_info_raw()) {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(error);
+        }
+        Ok(Self { path, temporary })
+    }
+
+    fn commit(self, card: &LoadedCard, records: &BTreeMap<u8, PadRecord>) -> Result<()> {
+        let patched = card::patch_pad_records(card.pad_info_raw(), records)?;
+        {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&self.temporary)?;
+            file.write_all(&patched)?;
+            file.sync_all()?;
+        }
+        std::fs::rename(&self.temporary, &self.path)?;
+        Ok(())
+    }
+
+    fn release(self) {
+        let _ = std::fs::remove_file(&self.temporary);
+    }
+}
+
+fn remove_disposable_leftovers(samples: &Path) {
+    let Ok(entries) = std::fs::read_dir(samples) else {
+        return;
+    };
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        if is_disposable_leftover(samples, &path) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+fn is_disposable_leftover(samples: &Path, path: &Path) -> bool {
+    if path
+        == samples
+            .join(PAD_INFO_FILE_NAME)
+            .with_extension(TEMPORARY_SUFFIX)
+    {
+        return true;
+    }
+    let is_temporary = path.extension().is_some_and(|it| it == TEMPORARY_SUFFIX);
+    let converted_for_a_pad = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(card::slot_from_sample_stem)
+        .is_some();
+    is_temporary && converted_for_a_pad
+}
+
+fn write_to_disk(path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
     Ok(())
 }
 
@@ -391,8 +584,11 @@ fn sample_names(card: &LoadedCard, slot: u8) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::audio::testing;
-    use crate::card::{PAD_COUNT, PadSettings, TempoMode, read_card};
+    use crate::card::{PadSettings, TempoMode, read_card};
     use tempfile::TempDir;
+
+    const AIFF_HEADER_FIXTURE: &[u8] =
+        include_bytes!("../../tests/fixtures/A0000001.header512.aiff.bin");
 
     struct Fixture {
         _root: TempDir,
@@ -489,6 +685,19 @@ mod tests {
             plan: &SyncPlan,
             cancel: Option<Arc<AtomicBool>>,
         ) -> (SyncOutcome, Vec<Progress>) {
+            let (outcome, seen) = self.attempt_with(plan, cancel);
+            (outcome.expect("apply"), seen)
+        }
+
+        fn attempt(&self, plan: &SyncPlan) -> Result<SyncOutcome> {
+            self.attempt_with(plan, None).0
+        }
+
+        fn attempt_with(
+            &self,
+            plan: &SyncPlan,
+            cancel: Option<Arc<AtomicBool>>,
+        ) -> (Result<SyncOutcome>, Vec<Progress>) {
             let card = self.card();
             let mut seen: Vec<Progress> = Vec::new();
             let outcome = {
@@ -500,9 +709,20 @@ mod tests {
                     cancel,
                     report: &mut report,
                 };
-                apply_plan(&mut context, plan).expect("apply")
+                apply_plan(&mut context, plan)
             };
             (outcome, seen)
+        }
+
+        fn snapshot(&self) -> BTreeMap<String, Vec<u8>> {
+            std::fs::read_dir(&self.samples)
+                .expect("samples")
+                .filter_map(|entry| entry.ok())
+                .map(|entry| {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    (name, std::fs::read(entry.path()).expect("read"))
+                })
+                .collect()
         }
 
         fn pad_info(&self) -> Vec<u8> {
@@ -544,6 +764,116 @@ mod tests {
             action: PlannedAction::Move { from_slot },
             edit: edit(),
         }
+    }
+
+    fn deleted(slot: u8) -> PlannedSlot {
+        PlannedSlot {
+            slot,
+            action: PlannedAction::Delete,
+            edit: edit(),
+        }
+    }
+
+    fn settings(slot: u8) -> PlannedSlot {
+        PlannedSlot {
+            slot,
+            action: PlannedAction::Settings,
+            edit: edit(),
+        }
+    }
+
+    #[test]
+    fn a_sync_clears_conversions_and_pad_tables_an_earlier_sync_left_behind() {
+        let f = fixture(2);
+        std::fs::write(f.samples.join("A0000006.padbandit-tmp"), b"half a sample").expect("write");
+        std::fs::write(f.samples.join("PAD_INFO.padbandit-tmp"), b"half a table").expect("write");
+
+        f.run(&plan(vec![settings(0)]));
+
+        assert_eq!(f.strays(), 0);
+    }
+
+    #[test]
+    fn a_sync_keeps_set_aside_samples_that_may_be_the_only_copy() {
+        let f = fixture(2);
+        for name in ["0.padbandit-tmp", "5.replaced.padbandit-tmp"] {
+            std::fs::write(f.samples.join(name), b"a user's sample").expect("write");
+        }
+
+        f.run(&plan(vec![settings(0)]));
+
+        assert!(f.samples.join("0.padbandit-tmp").exists());
+        assert!(f.samples.join("5.replaced.padbandit-tmp").exists());
+    }
+
+    #[test]
+    fn a_moved_aiff_keeps_its_aif_extension() {
+        let f = fixture(2);
+        std::fs::write(f.samples.join("A0000003.AIF"), AIFF_HEADER_FIXTURE).expect("aiff");
+
+        let outcome = f.run(&plan(vec![moved(5, 2), deleted(2)])).0;
+
+        assert!(outcome.failures.is_empty());
+        let landed = f.samples.join("A0000006.AIF");
+        assert_eq!(card::read_sample_index(&landed).expect("index"), 5);
+        assert!(!f.samples.join(sample_file_name(5)).exists());
+        assert!(!f.samples.join("A0000003.AIF").exists());
+        assert_eq!(f.strays(), 0);
+    }
+
+    #[test]
+    fn a_move_onto_a_pad_holding_an_aiff_leaves_that_pad_one_file() {
+        let f = fixture(2);
+        std::fs::write(f.samples.join("A0000003.AIF"), AIFF_HEADER_FIXTURE).expect("aiff");
+
+        let outcome = f.run(&plan(vec![moved(2, 0), deleted(0)])).0;
+
+        assert!(outcome.failures.is_empty());
+        assert!(f.samples.join(sample_file_name(2)).exists());
+        assert!(!f.samples.join("A0000003.AIF").exists());
+        assert_eq!(f.strays(), 0);
+    }
+
+    #[test]
+    fn a_move_that_fails_halfway_puts_every_file_back_and_leaves_pad_info_alone() {
+        let f = fixture(2);
+        std::fs::write(f.samples.join(sample_file_name(1)), b"not a card sample").expect("write");
+        let before = f.snapshot();
+
+        f.attempt(&plan(vec![moved(0, 1), moved(1, 0)]))
+            .expect_err("the second file has no header to patch");
+
+        assert_eq!(f.snapshot(), before);
+    }
+
+    #[test]
+    fn a_card_with_no_room_for_the_pad_table_is_refused_before_any_sample_changes() {
+        let f = fixture(2);
+        let source = f.source("kick.wav", 800);
+        std::fs::create_dir(f.samples.join("PAD_INFO.padbandit-tmp")).expect("block the table");
+        let pad_info_before = f.pad_info();
+
+        f.attempt(&plan(vec![write(5, source), deleted(1)]))
+            .expect_err("no room for the table");
+
+        assert_eq!(wav_files(&f.samples), 2);
+        assert!(f.samples.join(sample_file_name(1)).exists());
+        assert_eq!(f.pad_info(), pad_info_before);
+    }
+
+    #[test]
+    fn a_slot_outside_the_card_is_refused_before_anything_on_the_card_is_touched() {
+        let f = fixture(2);
+        let source = f.source("kick.wav", 800);
+        let before = f.snapshot();
+
+        let refusal = f
+            .attempt(&plan(vec![write(200, source)]))
+            .expect_err("refused");
+
+        assert!(matches!(refusal, Error::UnknownSlot { slot: 200 }));
+        assert_eq!(f.snapshot(), before);
+        assert!(!f.app_data.join(BACKUPS_DIRECTORY).exists());
     }
 
     #[test]
