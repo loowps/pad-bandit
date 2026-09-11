@@ -1,5 +1,3 @@
-> 🚧 **Work in progress**
-
 <br />
 
 <div align="center">
@@ -36,12 +34,11 @@ previews, waveform editing, and incremental sync.
 - ⚙️ Pad settings — Edit parameters such as Lo-Fi, Gate, Loop, and Volume.
 - 🔄 Incremental sync — Only modified pads are synchronized instead of rewriting the entire bank.
 - 💾 Projects — Save and restore complete pad-bank setups for easy recall and reuse.
+- 🎵 Audio formats — Reads `wav`, `aif` / `aiff`, `mp3`, `flac` and `ogg`, converted to the card's own WAV format on sync.
 
-## Audio Formats
+## Download
 
-Readable sources: `wav` · `aif` / `aiff` · `mp3` · `flac` · `ogg`
-
-Everything is converted to the card's own WAV format on sync.
+See [Releases] for Windows and macOS builds.
 
 ## Tech Stack
 
@@ -61,6 +58,7 @@ appropriate backups of your samples and SD cards.
 
 [GPL-3.0-or-later](LICENSE)
 
+[Releases]: https://github.com/loowps/pad-bandit/releases
 [Super Pads]: https://github.com/MatthewCallis/super-pads
 [Tauri]: https://tauri.app/
 [Vue.js]: https://vuejs.org/
