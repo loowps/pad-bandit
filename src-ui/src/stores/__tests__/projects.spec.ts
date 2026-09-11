@@ -13,11 +13,18 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 let menuHandler: ((action: MenuAction) => void) | null = null
+let closeHandler: (() => void) | null = null
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn<
-    (event: string, handler: (event: { payload: MenuAction }) => void) => Promise<() => void>
-  >((_event, handler) => {
+    (event: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>
+  >((event, handler) => {
+    if (event === 'close-requested') {
+      closeHandler = () => handler({ payload: null })
+      return Promise.resolve(() => {
+        closeHandler = null
+      })
+    }
     menuHandler = (action) => handler({ payload: action })
     return Promise.resolve(() => {
       menuHandler = null
@@ -86,6 +93,7 @@ beforeEach(() => {
   title = 'Pad Bandit'
   missingOnDisk = []
   menuHandler = null
+  closeHandler = null
   invokeMock.mockReset()
   invokeMock.mockImplementation((command, args) => {
     const payload = args as {
@@ -142,6 +150,10 @@ beforeEach(() => {
         return Promise.resolve(null)
       case 'window_set_title':
         title = payload.title!
+        return Promise.resolve(null)
+      case 'window_set_unsaved':
+      case 'window_keep_open':
+      case 'window_close':
         return Promise.resolve(null)
       default:
         throw new Error(`unexpected command ${command}`)
@@ -471,22 +483,88 @@ describe('projects store', () => {
       expect(pads.padById('A3')?.audio).toMatchObject({ sourcePath: '/samples/kick.wav' })
       expect(projects.isDirty).toBe(false)
     })
+  })
 
-    it('a sync that gave pads their source leaves the project to be saved', async () => {
+  describe('what counts as unsaved', () => {
+    it('pending work is unsaved until a project holds it, and again once it changes', async () => {
       const pads = loadedPads()
       const projects = useProjectsStore()
+      pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+      expect(projects.isDirty).toBe(true)
+
       await projects.save()
       expect(projects.isDirty).toBe(false)
+
+      pads.updateSettings('A3', { volume: 40 })
+      expect(projects.isDirty).toBe(true)
+    })
+
+    it('a sync that leaves nothing pending leaves nothing unsaved', () => {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
 
       syncKickOntoA3(pads)
 
-      expect(pads.hasPreparedPads).toBe(false)
-      expect(projects.isDirty).toBe(true)
-      await projects.journalNow()
-      expect(journalled?.project.slots[2]?.audio).toMatchObject({ sourcePath: '/samples/kick.wav' })
-
-      await projects.save()
       expect(projects.isDirty).toBe(false)
+    })
+
+    it('tells the window whether closing it should ask', async () => {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
+      projects.startJournal()
+
+      pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+      await vi.waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith('window_set_unsaved', { unsaved: true }),
+      )
+
+      projects.stopJournal()
+    })
+  })
+
+  describe('closing the window with unsaved work', () => {
+    async function askedToClose() {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
+      await projects.listenToClose()
+      pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+      await projects.journalNow()
+      closeHandler!()
+      return projects
+    }
+
+    it('asks, and closing without saving lets the recovery file go', async () => {
+      const projects = await askedToClose()
+      expect(projects.closeOffer).toBe(true)
+      expect(journalled).not.toBeNull()
+
+      await projects.closeWithoutSaving()
+
+      expect(journalled).toBeNull()
+      expect(invokeMock).toHaveBeenCalledWith('window_close')
+      expect(projects.closeOffer).toBe(false)
+    })
+
+    it('saves the project first when asked to', async () => {
+      const projects = await askedToClose()
+
+      await projects.saveAndClose()
+
+      expect(files[SET_PATH]?.slots[2]).toMatchObject({ intent: 'sample' })
+      expect(invokeMock).toHaveBeenCalledWith('window_close')
+    })
+
+    it('stays open when saving is cancelled, and when the question is', async () => {
+      const projects = await askedToClose()
+      picked = null
+
+      await projects.saveAndClose()
+      closeHandler!()
+      await projects.stayOpen()
+
+      expect(invokeMock).not.toHaveBeenCalledWith('window_close')
+      expect(invokeMock).toHaveBeenCalledWith('window_keep_open')
+      expect(projects.closeOffer).toBe(false)
     })
   })
 

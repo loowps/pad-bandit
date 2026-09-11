@@ -275,6 +275,9 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
           return null
         },
         window_set_title: () => null,
+        window_set_unsaved: () => null,
+        window_keep_open: () => null,
+        window_close: () => null,
         'plugin:app|version': () => '0.1.0',
         'plugin:opener|open_url': () => null,
         card_presence: () => ({

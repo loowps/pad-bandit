@@ -9,6 +9,7 @@ use crate::audio::encode::{self, FrameRegion};
 use crate::audio::peaks::{self, Peaks};
 use crate::audio::play::{PlayRequest, PlaybackEvents, Player};
 use crate::card::{CardPresence, CardState};
+use crate::closing::CloseGuard;
 use crate::config::{Config, Theme};
 use crate::error::Result;
 use crate::fs::Entry;
@@ -179,6 +180,24 @@ pub fn journal_clear(state: State<'_, AppState>) -> Result<()> {
 pub fn window_set_title(window: tauri::Window, title: String) -> Result<()> {
     window
         .set_title(&title)
+        .map_err(|error| crate::Error::Window(error.to_string()))
+}
+
+#[tauri::command]
+pub fn window_set_unsaved(guard: State<'_, CloseGuard>, unsaved: bool) {
+    guard.set_unsaved(unsaved);
+}
+
+#[tauri::command]
+pub fn window_keep_open(guard: State<'_, CloseGuard>) {
+    guard.keep_open();
+}
+
+#[tauri::command]
+pub fn window_close(window: tauri::Window, guard: State<'_, CloseGuard>) -> Result<()> {
+    guard.let_go();
+    window
+        .close()
         .map_err(|error| crate::Error::Window(error.to_string()))
 }
 

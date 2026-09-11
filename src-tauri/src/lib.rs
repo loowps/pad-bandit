@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod card;
+pub mod closing;
 pub mod commands;
 pub mod config;
 pub mod error;
@@ -31,6 +32,7 @@ pub fn run() {
             menu::apply(app.handle(), &config)?;
             commands::apply_window_theme(app.handle(), config.theme);
             app.manage(state);
+            app.manage(closing::CloseGuard::default());
             commands::reindex_in_background(app.handle().clone(), false);
             app.manage(Player::spawn(commands::PlaybackBridge::new(
                 app.handle().clone(),
@@ -38,6 +40,7 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(menu::on_event)
+        .on_window_event(closing::on_window_event)
         .invoke_handler(tauri::generate_handler![
             commands::config_get,
             commands::config_add_folder,
@@ -63,6 +66,9 @@ pub fn run() {
             commands::project_recent,
             commands::project_forget_recent,
             commands::window_set_title,
+            commands::window_set_unsaved,
+            commands::window_keep_open,
+            commands::window_close,
             commands::journal_write,
             commands::journal_read,
             commands::journal_clear,

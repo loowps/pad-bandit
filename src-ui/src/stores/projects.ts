@@ -2,8 +2,11 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
   clearJournal,
+  closeWindow,
   forgetRecentProjects,
+  keepWindowOpen,
   type MenuAction,
+  onCloseRequested,
   onMenuAction,
   openProject,
   pickProjectToOpen,
@@ -13,6 +16,7 @@ import {
   recentProjects,
   saveProject,
   setWindowTitle,
+  setWindowUnsaved,
   type StoredProject,
   writeJournal,
 } from '@/projects'
@@ -27,7 +31,6 @@ import {
   resolveProject,
   type RestoreChoice,
 } from '@/domain/project'
-import type { Pad } from '@/domain/pad'
 import { explain } from '@/domain/errors'
 import { type FrameRegion, regionsAtSource } from '@/audio'
 import { getFileSystemGateway } from '@/filesystem'
@@ -40,6 +43,7 @@ const APP_TITLE = 'Pad Bandit'
 const PROJECT_NOTICE = 'project'
 const JOURNAL_NOTICE = 'project:journal'
 const REOPENED_NOTICE = 'project:reopened'
+const CLOSING_NOTICE = 'project:closing'
 const UNTRIMMED: FrameRegion = { startFrame: 0, endFrame: 0 }
 
 export interface RestoreOffer {
@@ -54,14 +58,15 @@ export const useProjectsStore = defineStore('projects', () => {
   const recent = ref<string[]>([])
   const recoverable = ref<Project | null>(null)
   const restoreOffer = ref<RestoreOffer | null>(null)
-  const savedSources = ref('')
+  const closeOffer = ref(false)
+  const savedSlots = ref<string | null>(null)
   let answerOffer: ((choice: RestoreChoice) => void) | null = null
 
   const isNamed = computed(() => Boolean(name.value))
   const portability = computed<Portability>(() => portabilityOf(documentFor(name.value ?? '')))
-  const sourcesNow = computed(() => sourcesOf(usePadsStore().allPads))
+  const currentSlots = computed(() => JSON.stringify(documentFor('').slots))
   const isDirty = computed(
-    () => usePadsStore().hasPreparedPads || sourcesNow.value !== savedSources.value,
+    () => usePadsStore().hasPreparedPads && currentSlots.value !== savedSlots.value,
   )
   const title = computed(() => {
     const label = name.value ? `${APP_TITLE} — ${name.value}` : APP_TITLE
@@ -71,6 +76,7 @@ export const useProjectsStore = defineStore('projects', () => {
   let journalTimer: ReturnType<typeof setTimeout> | null = null
   let stopWatching: (() => void) | null = null
   let stopListening: (() => void) | null = null
+  let stopListeningToClose: (() => void) | null = null
 
   function report(cause: unknown, title: string, source: string = PROJECT_NOTICE): void {
     useNoticesStore().notify({
@@ -160,7 +166,7 @@ export const useProjectsStore = defineStore('projects', () => {
       resolution = resolveProject(project, pads.cardPads, missing, choice)
     }
     pads.applyProject(await withSourceRegions(resolution))
-    savedSources.value = sourcesNow.value
+    savedSlots.value = currentSlots.value
     announce(project, resolution)
     path.value = from
     name.value = project.name
@@ -171,7 +177,7 @@ export const useProjectsStore = defineStore('projects', () => {
     path.value = stored.path
     name.value = stored.project.name
     savedAt.value = stored.project.savedAt
-    savedSources.value = sourcesNow.value
+    savedSlots.value = currentSlots.value
     useNoticesStore().resolve(PROJECT_NOTICE)
   }
 
@@ -231,7 +237,7 @@ export const useProjectsStore = defineStore('projects', () => {
     path.value = null
     name.value = null
     savedAt.value = null
-    savedSources.value = sourcesNow.value
+    savedSlots.value = null
     const notices = useNoticesStore()
     notices.resolve(PROJECT_NOTICE)
     notices.resolve(REOPENED_NOTICE)
@@ -272,6 +278,7 @@ export const useProjectsStore = defineStore('projects', () => {
       return
     }
     savedAt.value = null
+    savedSlots.value = null
     recoverable.value = null
   }
 
@@ -321,6 +328,64 @@ export const useProjectsStore = defineStore('projects', () => {
     }
   }
 
+  async function markUnsaved(unsaved: boolean): Promise<void> {
+    try {
+      await setWindowUnsaved(unsaved)
+    } catch (cause) {
+      report(cause, 'Closing the window will not ask about unsaved work', CLOSING_NOTICE)
+    }
+  }
+
+  async function listenToClose(): Promise<void> {
+    if (stopListeningToClose) {
+      return
+    }
+    try {
+      stopListeningToClose = await onCloseRequested(() => {
+        closeOffer.value = true
+      })
+    } catch (cause) {
+      report(cause, 'Closing the window will not ask about unsaved work', CLOSING_NOTICE)
+    }
+  }
+
+  async function close(): Promise<void> {
+    try {
+      await closeWindow()
+    } catch (cause) {
+      report(cause, 'The window could not be closed', CLOSING_NOTICE)
+    }
+  }
+
+  async function saveAndClose(): Promise<void> {
+    closeOffer.value = false
+    if (await save()) {
+      await close()
+    } else {
+      await stayOpen()
+    }
+  }
+
+  async function closeWithoutSaving(): Promise<void> {
+    closeOffer.value = false
+    try {
+      await clearJournal()
+    } catch (cause) {
+      report(cause, 'The unsaved work could not be let go', CLOSING_NOTICE)
+      return
+    }
+    await close()
+  }
+
+  async function stayOpen(): Promise<void> {
+    closeOffer.value = false
+    try {
+      await keepWindowOpen()
+    } catch (cause) {
+      report(cause, 'Closing the window will not ask again', CLOSING_NOTICE)
+    }
+  }
+
   async function listenToMenu(): Promise<void> {
     if (stopListening) {
       return
@@ -358,11 +423,13 @@ export const useProjectsStore = defineStore('projects', () => {
       { deep: true },
     )
     const stopTitle = watch(title, (current) => void showTitle(current), { immediate: true })
+    const stopUnsaved = watch(isDirty, (dirty) => void markUnsaved(dirty), { immediate: true })
 
     stopWatching = () => {
       stopSettings()
       stopStructural()
       stopTitle()
+      stopUnsaved()
     }
   }
 
@@ -375,6 +442,8 @@ export const useProjectsStore = defineStore('projects', () => {
     stopWatching = null
     stopListening?.()
     stopListening = null
+    stopListeningToClose?.()
+    stopListeningToClose = null
   }
 
   return {
@@ -385,6 +454,10 @@ export const useProjectsStore = defineStore('projects', () => {
     recoverable,
     restoreOffer,
     answerRestore,
+    closeOffer,
+    saveAndClose,
+    closeWithoutSaving,
+    stayOpen,
     isNamed,
     isDirty,
     title,
@@ -401,6 +474,7 @@ export const useProjectsStore = defineStore('projects', () => {
     discardRecovered,
     journalNow,
     listenToMenu,
+    listenToClose,
     startJournal,
     stopJournal,
   }
@@ -412,16 +486,6 @@ async function showTitle(current: string): Promise<void> {
   } catch {
     // the window title is cosmetic; a failure here must not surface as an error
   }
-}
-
-function sourcesOf(pads: Pad[]): string {
-  return pads
-    .flatMap((pad) =>
-      pad.audio?.kind === 'card' && pad.audio.sourcePath
-        ? [`${pad.slot}:${pad.audio.sourcePath}`]
-        : [],
-    )
-    .join('\n')
 }
 
 function nameFrom(target: string): string {
