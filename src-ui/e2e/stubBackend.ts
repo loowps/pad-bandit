@@ -33,6 +33,7 @@ export type StubMenuAction =
   | { kind: 'forgetRecent' }
   | { kind: 'openRecent'; path: string }
   | { kind: 'setTheme'; theme: 'system' | 'light' | 'dark' }
+  | { kind: 'about' }
 
 declare global {
   interface Window {
@@ -268,6 +269,8 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
           return null
         },
         window_set_title: () => null,
+        'plugin:app|version': () => '0.1.0',
+        'plugin:opener|open_url': () => null,
         card_presence: () => ({
           present: Boolean(given.card),
           fingerprint: given.card ? 'presence-1' : null,

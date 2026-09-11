@@ -4,8 +4,8 @@
 
 <div align="center">
   <picture>
-    <source srcset="assets/pad-bandit-logo-light.svg" media="(prefers-color-scheme: dark)" />
-    <img src="assets/pad-bandit-logo-dark.svg" alt="Pad Bandit Logo" />
+    <source srcset="src-ui/src/assets/pad-bandit-logo-light.svg" media="(prefers-color-scheme: dark)" />
+    <img src="src-ui/src/assets/pad-bandit-logo-dark.svg" alt="Pad Bandit Logo" />
   </picture>
 </div>
 

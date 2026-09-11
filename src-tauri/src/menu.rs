@@ -20,6 +20,7 @@ const RECENT_PREFIX: &str = "project.recent.";
 const THEME_LIGHT: &str = "view.mode.light";
 const THEME_DARK: &str = "view.mode.dark";
 const THEME_SYSTEM: &str = "view.mode.system";
+const ABOUT: &str = "help.about";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -37,6 +38,7 @@ pub enum Action {
     SetTheme {
         theme: Theme,
     },
+    About,
 }
 
 pub fn apply<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<()> {
@@ -67,6 +69,7 @@ fn action_of(id: &str, recent: &[PathBuf]) -> Option<Action> {
         THEME_SYSTEM => Some(Action::SetTheme {
             theme: Theme::System,
         }),
+        ABOUT => Some(Action::About),
         _ => id
             .strip_prefix(RECENT_PREFIX)
             .and_then(|index| index.parse::<usize>().ok())
@@ -106,7 +109,14 @@ fn build<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<Menu<
         .item(&mode_submenu(app, config.theme)?)
         .build()?;
 
-    MenuBuilder::new(app).item(&project).item(&view).build()
+    let about = MenuItemBuilder::with_id(ABOUT, "&About Pad Bandit").build(app)?;
+    let help = SubmenuBuilder::new(app, "&Help").item(&about).build()?;
+
+    MenuBuilder::new(app)
+        .item(&project)
+        .item(&view)
+        .item(&help)
+        .build()
 }
 
 fn mode_submenu<R: Runtime>(
@@ -185,6 +195,7 @@ mod tests {
         assert_eq!(action_of(SAVE, &[]), Some(Action::Save));
         assert_eq!(action_of(SAVE_AS, &[]), Some(Action::SaveAs));
         assert_eq!(action_of(FORGET_RECENT, &[]), Some(Action::ForgetRecent));
+        assert_eq!(action_of(ABOUT, &[]), Some(Action::About));
     }
 
     #[test]
