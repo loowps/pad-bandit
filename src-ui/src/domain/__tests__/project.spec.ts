@@ -14,10 +14,15 @@ import {
   diskPathsOf,
   editOf,
   missingSourceLabel,
+  portabilityOf,
   projectDocument,
   resolveProject,
+  type RestoreChoice,
 } from '@/domain/project'
 import type { Project } from '@/projects'
+
+const RESTORE: RestoreChoice = { restore: true, clearExtras: false }
+const KICK_ON_DISK = '/samples/kick.wav'
 
 function sample(fileName: string, fingerprint: string): SampleInfo {
   return {
@@ -41,6 +46,10 @@ function occupiedPad(slot: number, fileName: string, fingerprint: string): Pad {
     sample: info,
     settings: { ...createDefaultSettings(), endFrame: info.endFrame },
   }
+}
+
+function fromDisk(pad: Pad, sourcePath: string): Pad {
+  return pad.sample ? { ...pad, audio: cardAudio(pad.slot, pad.sample, sourcePath) } : pad
 }
 
 function cardOf(pads: Pad[]): Record<PadId, Pad> {
@@ -71,6 +80,15 @@ describe('projectDocument', () => {
       audio: { kind: 'card', originSlot: 0, fileName: 'A0000001.WAV', fingerprint: 'fp-kick' },
     })
     expect(document.cardRoot).toBe('/media/SP-CARD')
+  })
+
+  it('records the file on disk a synced card sample came from', () => {
+    const pads = cardOf([fromDisk(occupiedPad(0, 'A0000001.WAV', 'fp-kick'), KICK_ON_DISK)])
+
+    const document = documentOf(pads, {})
+
+    expect(document.slots[0]?.audio).toMatchObject({ kind: 'card', sourcePath: KICK_ON_DISK })
+    expect(documentOf(cardOf([]), {}).slots[0]?.audio).toBeNull()
   })
 
   it('keeps every intent and splits the trim points out of the settings', () => {
@@ -105,6 +123,23 @@ describe('diskPathsOf', () => {
 
     expect(diskPathsOf(document)).toEqual(['/samples/snare.wav'])
   })
+
+  it('includes the file a card sample came from, so a restore knows whether it is still there', () => {
+    const card = cardOf([fromDisk(occupiedPad(0, 'A0000001.WAV', 'fp-kick'), KICK_ON_DISK)])
+
+    expect(diskPathsOf(documentOf(card, {}))).toEqual([KICK_ON_DISK])
+  })
+})
+
+describe('portabilityOf', () => {
+  it('counts a card sample whose file on disk is known as portable', () => {
+    const card = cardOf([
+      fromDisk(occupiedPad(0, 'A0000001.WAV', 'fp-kick'), KICK_ON_DISK),
+      occupiedPad(1, 'A0000002.WAV', 'fp-recorded'),
+    ])
+
+    expect(portabilityOf(documentOf(card, {}))).toEqual({ fromDisk: 1, fromCard: 1 })
+  })
 })
 
 describe('missingSourceLabel', () => {
@@ -128,6 +163,20 @@ describe('missingSourceLabel', () => {
       name: 'B0000002.WAV',
       location: 'It was on the card, on pad B2',
     })
+  })
+
+  it('names the file on disk too when the card sample had one', () => {
+    const audio = {
+      kind: 'card' as const,
+      originSlot: 13,
+      fileName: 'B0000002.WAV',
+      fingerprint: '',
+      sourcePath: KICK_ON_DISK,
+    }
+
+    expect(missingSourceLabel({ audio, settings }).location).toBe(
+      `It was on the card, on pad B2, and at ${KICK_ON_DISK}`,
+    )
   })
 })
 
@@ -258,5 +307,106 @@ describe('resolveProject', () => {
 
     expect(resolution.pads[padIdForSlot(0)]).toBeDefined()
     expect(resolution.intents[padIdForSlot(0)]).toEqual(keepIntent())
+  })
+
+  it('takes a pending card sample from its file on disk when the card lost it, without asking', () => {
+    const saved = cardOf([])
+    const info = sample('A0000001.WAV', 'fp-kick')
+    saved['A3'] = { ...createPad(2), audio: cardAudio(0, info, KICK_ON_DISK), sample: info }
+    const document = documentOf(saved, { A3: sampleIntent(saved['A3']!.audio!) })
+
+    const resolution = resolveProject(document, cardOf([]))
+
+    expect(resolution.pads['A3']?.audio).toEqual(diskAudio(KICK_ON_DISK))
+    expect(resolution.fromSource).toEqual(['A3'])
+    expect(resolution.orphans).toEqual({})
+  })
+})
+
+describe('resolveProject against a card that no longer matches', () => {
+  const synced = () => cardOf([fromDisk(occupiedPad(0, 'A0000001.WAV', 'fp-kick'), KICK_ON_DISK)])
+
+  it('finds nothing to ask about on the card the project was saved from', () => {
+    const card = cardOf([occupiedPad(0, 'A0000001.WAV', 'fp-kick')])
+
+    const resolution = resolveProject(documentOf(synced(), {}), card)
+
+    expect(resolution.divergence).toEqual({ onCard: 0, fromDisk: 0, missing: 0, extra: 0 })
+    expect(resolution.pads['A1']?.audio).toMatchObject({ kind: 'card', sourcePath: KICK_ON_DISK })
+    expect(resolution.intents['A1']).toEqual(keepIntent())
+  })
+
+  it('leaves a wiped card as it is until the user asks for a restore', () => {
+    const document = documentOf(synced(), {})
+
+    const resolution = resolveProject(document, cardOf([]))
+
+    expect(resolution.divergence).toEqual({ onCard: 0, fromDisk: 1, missing: 0, extra: 0 })
+    expect(resolution.pads['A1']?.audio).toBeNull()
+    expect(resolution.intents['A1']).toEqual(keepIntent())
+    expect(resolution.fromSource).toEqual([])
+  })
+
+  it('restores a pad from the file it was synced from', () => {
+    const saved = synced()
+    saved['A1']!.settings.startFrame = 100
+    const document = documentOf(saved, {})
+
+    const resolution = resolveProject(document, cardOf([]), new Set(), RESTORE)
+
+    expect(resolution.pads['A1']?.audio).toEqual(diskAudio(KICK_ON_DISK))
+    expect(resolution.pads['A1']?.settings.startFrame).toBe(100)
+    expect(resolution.intents['A1']).toEqual(sampleIntent(diskAudio(KICK_ON_DISK)))
+    expect(resolution.fromSource).toEqual(['A1'])
+    expect(resolution.summary).toMatchObject({ fromDisk: 1, resolved: 0, missing: 0 })
+  })
+
+  it('prefers the sample still on the card, on another pad, over copying it again', () => {
+    const shuffled = cardOf([occupiedPad(5, 'A0000006.WAV', 'fp-kick')])
+
+    const resolution = resolveProject(documentOf(synced(), {}), shuffled, new Set(), RESTORE)
+
+    expect(resolution.divergence).toMatchObject({ onCard: 1, fromDisk: 0 })
+    expect(resolution.moved).toEqual(['A1'])
+    expect(resolution.pads['A1']?.audio).toMatchObject({ originSlot: 5, sourcePath: KICK_ON_DISK })
+    expect(resolution.fromSource).toEqual([])
+  })
+
+  it('reports a pad as missing when neither the card nor the disk still has it', () => {
+    const recorded = documentOf(cardOf([occupiedPad(0, 'A0000001.WAV', 'fp-kick')]), {})
+    const moved = documentOf(synced(), {})
+
+    const withoutSource = resolveProject(recorded, cardOf([]), new Set(), RESTORE)
+    const sourceGone = resolveProject(moved, cardOf([]), new Set([KICK_ON_DISK]), RESTORE)
+
+    for (const resolution of [withoutSource, sourceGone]) {
+      expect(resolution.divergence).toMatchObject({ missing: 1, fromDisk: 0 })
+      expect(Object.keys(resolution.orphans)).toEqual(['A1'])
+      expect(resolution.pads['A1']?.audio).toBeNull()
+    }
+  })
+
+  it('does not take a different recording under the same file name for the saved one', () => {
+    const rerecorded = cardOf([occupiedPad(0, 'A0000001.WAV', 'fp-new-take')])
+
+    const resolution = resolveProject(documentOf(synced(), {}), rerecorded)
+
+    expect(resolution.divergence).toMatchObject({ fromDisk: 1 })
+    expect(resolution.pads['A1']?.sample?.fingerprint).toBe('fp-new-take')
+  })
+
+  it('clears a pad the project has empty only when that is asked for too', () => {
+    const document = documentOf(cardOf([]), {})
+    const card = cardOf([occupiedPad(1, 'A0000002.WAV', 'fp-snare')])
+
+    const restored = resolveProject(document, card, new Set(), RESTORE)
+    const cleared = resolveProject(document, card, new Set(), { ...RESTORE, clearExtras: true })
+
+    expect(restored.divergence).toEqual({ onCard: 0, fromDisk: 0, missing: 0, extra: 1 })
+    expect(restored.pads['A2']?.audio).not.toBeNull()
+    expect(restored.intents['A2']).toEqual(keepIntent())
+    expect(cleared.pads['A2']?.audio).toBeNull()
+    expect(cleared.intents['A2']).toEqual(clearIntent())
+    expect(cleared.summary.cleared).toBe(1)
   })
 })

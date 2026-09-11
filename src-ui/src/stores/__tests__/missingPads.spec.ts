@@ -17,8 +17,6 @@ function withMissing(...ids: PadId[]) {
     pads: { ...pads.byId },
     intents: { ...pads.intentById },
     orphans: Object.fromEntries(ids.map((id) => [id, SAVED])),
-    moved: [],
-    summary: { resolved: 0, moved: 0, missing: ids.length, keeping: 0 },
   })
   return pads
 }
@@ -120,7 +118,7 @@ describe('a pad whose saved source is missing', () => {
       })),
     }
 
-    pads.adoptSync(card, new Set([1]))
+    pads.adoptCard(card, new Set([1]))
 
     expect(pads.missingFor('A1')).toEqual(SAVED)
     expect(pads.missingFor('A2')).toBeNull()

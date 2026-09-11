@@ -5,6 +5,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::audio::cache;
 use crate::audio::decode::AudioSource;
+use crate::audio::encode::{self, FrameRegion};
 use crate::audio::peaks::{self, Peaks};
 use crate::audio::play::{PlayRequest, PlaybackEvents, Player};
 use crate::card::{CardPresence, CardState};
@@ -264,6 +265,30 @@ pub fn audio_undecodable(state: State<'_, AppState>, paths: Vec<PathBuf>) -> Vec
                 path,
                 reason: refused.to_string(),
             })
+        })
+        .collect()
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardRegionOfSource {
+    pub path: PathBuf,
+    pub region: FrameRegion,
+}
+
+#[tauri::command(async)]
+pub fn audio_regions_at_source(
+    state: State<'_, AppState>,
+    requests: Vec<CardRegionOfSource>,
+) -> Vec<Option<FrameRegion>> {
+    let scopes = state.scopes();
+    requests
+        .into_iter()
+        .map(|request| {
+            scopes
+                .readable(&request.path)
+                .and_then(|resolved| encode::region_at_source(&resolved, request.region))
+                .ok()
         })
         .collect()
 }

@@ -12,6 +12,7 @@ export type CardStatus = 'empty' | 'reading' | 'valid' | 'invalid'
 export type CardPresenceState = 'unknown' | 'present' | 'missing' | 'stale'
 
 export const PRESENCE_POLL_MS = 3000
+const REREAD_NOTICE = 'card:reread'
 
 export const useCardStore = defineStore('card', () => {
   const rootPath = ref<string | null>(null)
@@ -86,12 +87,27 @@ export const useCardStore = defineStore('card', () => {
   }
 
   async function adopt(state: CardState, rewritten: ReadonlySet<number>): Promise<void> {
-    usePadsStore().adoptSync(state, rewritten)
+    usePadsStore().adoptCard(state, rewritten)
     fingerprint.value = state.fingerprint
     seenAt = (await readCardPresence()).fingerprint
     presence.value = 'present'
     status.value = 'valid'
     error.value = null
+  }
+
+  async function readAgain(): Promise<void> {
+    const notices = useNoticesStore()
+    try {
+      await adopt(await readCard(), new Set())
+      notices.resolve(REREAD_NOTICE)
+    } catch (cause) {
+      notices.notify({
+        severity: 'error',
+        source: REREAD_NOTICE,
+        title: 'The card could not be read again',
+        detail: messageOf(cause),
+      })
+    }
   }
 
   async function checkPresence(): Promise<CardPresenceState> {
@@ -160,6 +176,7 @@ export const useCardStore = defineStore('card', () => {
     load,
     clear,
     adopt,
+    readAgain,
     checkPresence,
     pausePresence,
     resumePresence,

@@ -17,14 +17,19 @@ import {
   writeJournal,
 } from '@/projects'
 import {
+  type Divergence,
+  divergedPads,
   diskPathsOf,
   type Portability,
   portabilityOf,
   projectDocument,
   type ProjectResolution,
   resolveProject,
+  type RestoreChoice,
 } from '@/domain/project'
+import type { Pad } from '@/domain/pad'
 import { explain } from '@/domain/errors'
+import { type FrameRegion, regionsAtSource } from '@/audio'
 import { getFileSystemGateway } from '@/filesystem'
 import { useCardStore } from '@/stores/card'
 import { useNoticesStore } from '@/stores/notices'
@@ -35,6 +40,12 @@ const APP_TITLE = 'Pad Bandit'
 const PROJECT_NOTICE = 'project'
 const JOURNAL_NOTICE = 'project:journal'
 const REOPENED_NOTICE = 'project:reopened'
+const UNTRIMMED: FrameRegion = { startFrame: 0, endFrame: 0 }
+
+export interface RestoreOffer {
+  name: string
+  divergence: Divergence
+}
 
 export const useProjectsStore = defineStore('projects', () => {
   const path = ref<string | null>(null)
@@ -42,10 +53,16 @@ export const useProjectsStore = defineStore('projects', () => {
   const savedAt = ref<number | null>(null)
   const recent = ref<string[]>([])
   const recoverable = ref<Project | null>(null)
+  const restoreOffer = ref<RestoreOffer | null>(null)
+  const savedSources = ref('')
+  let answerOffer: ((choice: RestoreChoice) => void) | null = null
 
   const isNamed = computed(() => Boolean(name.value))
   const portability = computed<Portability>(() => portabilityOf(documentFor(name.value ?? '')))
-  const isDirty = computed(() => usePadsStore().hasPreparedPads)
+  const sourcesNow = computed(() => sourcesOf(usePadsStore().allPads))
+  const isDirty = computed(
+    () => usePadsStore().hasPreparedPads || sourcesNow.value !== savedSources.value,
+  )
   const title = computed(() => {
     const label = name.value ? `${APP_TITLE} — ${name.value}` : APP_TITLE
     return isDirty.value ? `${label} •` : label
@@ -68,7 +85,9 @@ export const useProjectsStore = defineStore('projects', () => {
     const lines = [
       { count: resolution.summary.resolved, label: 'resolved' },
       { count: resolution.summary.moved, label: 'found in a different slot' },
+      { count: resolution.summary.fromDisk, label: 'restored from disk' },
       { count: resolution.summary.missing, label: 'source missing' },
+      { count: resolution.summary.cleared, label: 'cleared' },
       { count: resolution.summary.keeping, label: 'unchanged' },
     ].filter((line) => line.count > 0)
 
@@ -97,10 +116,51 @@ export const useProjectsStore = defineStore('projects', () => {
     return new Set(paths.length > 0 ? await getFileSystemGateway().missingFiles(paths) : [])
   }
 
+  function askToRestore(project: Project, divergence: Divergence): Promise<RestoreChoice> {
+    restoreOffer.value = { name: project.name, divergence }
+    return new Promise((answer) => {
+      answerOffer = answer
+    })
+  }
+
+  function answerRestore(choice: RestoreChoice): void {
+    const answer = answerOffer
+    answerOffer = null
+    restoreOffer.value = null
+    answer?.(choice)
+  }
+
+  async function withSourceRegions(resolution: ProjectResolution): Promise<ProjectResolution> {
+    const restored = resolution.fromSource.flatMap((id) => {
+      const pad = resolution.pads[id]
+      return pad?.audio ? [{ pad, path: pad.audio.path }] : []
+    })
+    if (restored.length === 0) {
+      return resolution
+    }
+
+    const regions = await regionsAtSource(
+      restored.map(({ pad, path }) => ({
+        path,
+        region: { startFrame: pad.settings.startFrame, endFrame: pad.settings.endFrame },
+      })),
+    )
+    restored.forEach(({ pad }, at) => {
+      pad.settings = { ...pad.settings, ...(regions[at] ?? UNTRIMMED) }
+    })
+    return resolution
+  }
+
   async function adopt(project: Project, from: string | null): Promise<void> {
     const pads = usePadsStore()
-    const resolution = resolveProject(project, pads.cardPads, await missingDiskPaths(project))
-    pads.applyProject(resolution)
+    const missing = await missingDiskPaths(project)
+    let resolution = resolveProject(project, pads.cardPads, missing)
+    if (divergedPads(resolution.divergence) > 0) {
+      const choice = await askToRestore(project, resolution.divergence)
+      resolution = resolveProject(project, pads.cardPads, missing, choice)
+    }
+    pads.applyProject(await withSourceRegions(resolution))
+    savedSources.value = sourcesNow.value
     announce(project, resolution)
     path.value = from
     name.value = project.name
@@ -111,6 +171,7 @@ export const useProjectsStore = defineStore('projects', () => {
     path.value = stored.path
     name.value = stored.project.name
     savedAt.value = stored.project.savedAt
+    savedSources.value = sourcesNow.value
     useNoticesStore().resolve(PROJECT_NOTICE)
   }
 
@@ -170,6 +231,7 @@ export const useProjectsStore = defineStore('projects', () => {
     path.value = null
     name.value = null
     savedAt.value = null
+    savedSources.value = sourcesNow.value
     const notices = useNoticesStore()
     notices.resolve(PROJECT_NOTICE)
     notices.resolve(REOPENED_NOTICE)
@@ -224,9 +286,8 @@ export const useProjectsStore = defineStore('projects', () => {
   }
 
   async function journalNow(): Promise<void> {
-    const pads = usePadsStore()
     try {
-      if (pads.hasPreparedPads) {
+      if (isDirty.value) {
         await writeJournal({
           path: path.value,
           project: documentFor(name.value ?? ''),
@@ -322,6 +383,8 @@ export const useProjectsStore = defineStore('projects', () => {
     savedAt,
     recent,
     recoverable,
+    restoreOffer,
+    answerRestore,
     isNamed,
     isDirty,
     title,
@@ -349,6 +412,16 @@ async function showTitle(current: string): Promise<void> {
   } catch {
     // the window title is cosmetic; a failure here must not surface as an error
   }
+}
+
+function sourcesOf(pads: Pad[]): string {
+  return pads
+    .flatMap((pad) =>
+      pad.audio?.kind === 'card' && pad.audio.sourcePath
+        ? [`${pad.slot}:${pad.audio.sourcePath}`]
+        : [],
+    )
+    .join('\n')
 }
 
 function nameFrom(target: string): string {

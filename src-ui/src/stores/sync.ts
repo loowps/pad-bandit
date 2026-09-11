@@ -111,6 +111,7 @@ export const useSyncStore = defineStore('sync', () => {
 
   function open(): void {
     isOpen.value = true
+    outcome.value = null
     void check()
   }
 

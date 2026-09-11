@@ -15,6 +15,7 @@ export interface ProjectCardRef {
   originSlot: number
   fileName: string
   fingerprint: string
+  sourcePath?: string
 }
 
 export type ProjectAudioRef = ProjectDiskRef | ProjectCardRef

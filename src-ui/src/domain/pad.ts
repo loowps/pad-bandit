@@ -20,6 +20,7 @@ export interface CardAudioRef {
   path: string
   originSlot: number
   fileName: string
+  sourcePath?: string
 }
 
 export type AudioRef = DiskAudioRef | CardAudioRef
@@ -73,8 +74,18 @@ export function diskAudio(path: string): DiskAudioRef {
   return { kind: 'path', path }
 }
 
-export function cardAudio(originSlot: number, sample: SampleInfo): CardAudioRef {
-  return { kind: 'card', path: sample.path, originSlot, fileName: sample.fileName }
+export function cardAudio(
+  originSlot: number,
+  sample: SampleInfo,
+  sourcePath?: string,
+): CardAudioRef {
+  const audio: CardAudioRef = {
+    kind: 'card',
+    path: sample.path,
+    originSlot,
+    fileName: sample.fileName,
+  }
+  return sourcePath ? { ...audio, sourcePath } : audio
 }
 
 export function createDefaultSettings(): PadSettings {
@@ -107,7 +118,7 @@ export function padFromSlot(slot: CardSlot): Pad {
   return {
     id: padIdForSlot(slot.slot),
     slot: slot.slot,
-    audio: sample ? cardAudio(slot.slot, sample) : null,
+    audio: sample ? cardAudio(slot.slot, sample, sample.sourcePath) : null,
     sample,
     settings: {
       ...slot.settings,

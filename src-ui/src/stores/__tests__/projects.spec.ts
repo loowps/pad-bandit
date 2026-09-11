@@ -94,8 +94,16 @@ beforeEach(() => {
       path?: string | null
       paths?: string[]
       title?: string
+      requests?: { path: string; region: { startFrame: number; endFrame: number } }[]
     }
     switch (command) {
+      case 'audio_regions_at_source':
+        return Promise.resolve(
+          payload.requests!.map(({ region }) => ({
+            startFrame: region.startFrame * 2,
+            endFrame: region.endFrame * 2,
+          })),
+        )
       case 'files_missing':
         return Promise.resolve(payload.paths!.filter((path) => missingOnDisk.includes(path)))
       case 'project_pick_to_save':
@@ -145,6 +153,26 @@ function loadedPads() {
   const pads = usePadsStore()
   pads.loadFromCard(cardState)
   return pads
+}
+
+function cardWith(files: Record<number, string>, sources: Record<number, string> = {}): CardState {
+  return {
+    ...cardState,
+    fingerprint: `fp-${Object.values(files).join('-')}`,
+    slots: Array.from({ length: PAD_COUNT }, (_unused, index) => {
+      const read = slot(index, files[index] ?? null)
+      const sourcePath = sources[index]
+      return read.sample && sourcePath ? { ...read, sample: { ...read.sample, sourcePath } } : read
+    }),
+  }
+}
+
+function syncKickOntoA3(pads: ReturnType<typeof usePadsStore>): void {
+  pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+  pads.adoptCard(
+    cardWith({ 0: 'A0000001.WAV', 2: 'A0000003.WAV' }, { 2: '/samples/kick.wav' }),
+    new Set([2]),
+  )
 }
 
 describe('projects store', () => {
@@ -381,6 +409,85 @@ describe('projects store', () => {
     expect(projects.title).toBe('Pad Bandit — march •')
 
     projects.stopJournal()
+  })
+
+  describe('a card that no longer matches the project', () => {
+    it('asks, then restores a synced pad from its file with the trim mapped to that file', async () => {
+      const pads = loadedPads()
+      syncKickOntoA3(pads)
+      const projects = useProjectsStore()
+      await projects.save()
+      expect(files[SET_PATH]?.slots[2]?.audio).toMatchObject({
+        kind: 'card',
+        sourcePath: '/samples/kick.wav',
+      })
+      pads.loadFromCard(cardWith({}))
+
+      const opening = projects.open(SET_PATH)
+      await vi.waitFor(() => expect(projects.restoreOffer).not.toBeNull())
+      expect(projects.restoreOffer).toEqual({
+        name: 'march',
+        divergence: { onCard: 0, fromDisk: 1, missing: 1, extra: 0 },
+      })
+      projects.answerRestore({ restore: true, clearExtras: false })
+
+      expect(await opening).toBe(true)
+      expect(projects.restoreOffer).toBeNull()
+      expect(pads.padById('A3')?.audio).toEqual(diskAudio('/samples/kick.wav'))
+      expect(pads.padById('A3')?.settings).toMatchObject({ startFrame: 0, endFrame: 2_000 })
+      expect(pads.changeFor('A3')?.status).toBe('added')
+      expect(pads.missingFor('A1')).not.toBeNull()
+      expect(
+        useNoticesStore().entries.find((entry) => entry.source === 'project:reopened'),
+      ).toMatchObject({ detail: expect.stringContaining('1 restored from disk') })
+    })
+
+    it('leaves the card as it is when the user keeps it', async () => {
+      const pads = loadedPads()
+      syncKickOntoA3(pads)
+      const projects = useProjectsStore()
+      await projects.save()
+      pads.loadFromCard(cardWith({}))
+
+      const opening = projects.open(SET_PATH)
+      await vi.waitFor(() => expect(projects.restoreOffer).not.toBeNull())
+      projects.answerRestore({ restore: false, clearExtras: false })
+
+      expect(await opening).toBe(true)
+      expect(pads.padById('A3')?.audio).toBeNull()
+      expect(pads.hasPreparedPads).toBe(false)
+      expect(invokeMock).not.toHaveBeenCalledWith('audio_regions_at_source', expect.anything())
+    })
+
+    it('asks nothing when the card still holds what the project saved', async () => {
+      const pads = loadedPads()
+      syncKickOntoA3(pads)
+      const projects = useProjectsStore()
+      await projects.save()
+
+      expect(await projects.open(SET_PATH)).toBe(true)
+
+      expect(projects.restoreOffer).toBeNull()
+      expect(pads.padById('A3')?.audio).toMatchObject({ sourcePath: '/samples/kick.wav' })
+      expect(projects.isDirty).toBe(false)
+    })
+
+    it('a sync that gave pads their source leaves the project to be saved', async () => {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
+      await projects.save()
+      expect(projects.isDirty).toBe(false)
+
+      syncKickOntoA3(pads)
+
+      expect(pads.hasPreparedPads).toBe(false)
+      expect(projects.isDirty).toBe(true)
+      await projects.journalNow()
+      expect(journalled?.project.slots[2]?.audio).toMatchObject({ sourcePath: '/samples/kick.wav' })
+
+      await projects.save()
+      expect(projects.isDirty).toBe(false)
+    })
   })
 
   describe('menu actions', () => {

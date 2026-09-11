@@ -101,7 +101,20 @@ const presenceLabel = computed(() => {
     </ul>
 
     <div class="actions">
-      <span v-if="presenceLabel" class="orphans">{{ presenceLabel }}</span>
+      <template v-if="presenceLabel">
+        <span class="orphans">{{ presenceLabel }}</span>
+        <button
+          v-if="card.presence === 'stale'"
+          type="button"
+          class="reread"
+          aria-label="Read the card again"
+          title="Read the card again"
+          :disabled="sync.running"
+          @click="card.readAgain()"
+        >
+          ↻
+        </button>
+      </template>
       <span v-else-if="pads.missingCount > 0" class="orphans" :title="orphanLabel">{{
         orphanLabel
       }}</span>
@@ -141,6 +154,7 @@ const presenceLabel = computed(() => {
 .pick,
 .discard,
 .clear,
+.reread,
 .sync {
   display: inline-flex;
   flex: 0 0 auto;
@@ -157,12 +171,18 @@ const presenceLabel = computed(() => {
   border-radius: var(--radius-md);
 }
 
-.clear {
+.clear,
+.reread {
   justify-content: center;
   width: var(--control-height);
   padding: 0;
   color: var(--text-muted);
   border: 0;
+}
+
+.reread {
+  font-size: 0.9375rem;
+  color: var(--status-unsynced);
 }
 
 .pick:hover,
@@ -171,12 +191,14 @@ const presenceLabel = computed(() => {
   border-color: var(--text-subtle);
 }
 
-.clear:hover:not(:disabled) {
+.clear:hover:not(:disabled),
+.reread:hover:not(:disabled) {
   color: var(--text-default);
   background: var(--control-track);
 }
 
 .clear:disabled,
+.reread:disabled,
 .card-chip:disabled {
   color: var(--text-subtle);
   cursor: default;
@@ -185,6 +207,7 @@ const presenceLabel = computed(() => {
 .pick:focus-visible,
 .discard:focus-visible,
 .clear:focus-visible,
+.reread:focus-visible,
 .card-chip:focus-visible,
 .sync:focus-visible {
   outline: 2px solid var(--focus-ring);

@@ -188,27 +188,19 @@ impl AudioSource {
             if packet.track_id != self.track_id {
                 continue;
             }
-            let timestamp = packet.pts.get().max(0) as u64;
-
-            let trim_start = packet.trim_start.get() as usize;
-            let trim_end = packet.trim_end.get() as usize;
+            let first_valid_frame = packet
+                .pts
+                .get()
+                .saturating_add(packet.trim_start.get() as i64)
+                .max(0) as u64;
 
             match self.decoder.decode(&packet) {
                 Ok(decoded) => {
                     decoded.copy_to_vec_interleaved(&mut self.interleaved);
-
-                    let samples_per_frame = usize::from(self.spec.channels);
-                    let start = (trim_start * samples_per_frame).min(self.interleaved.len());
-                    let end = self
-                        .interleaved
-                        .len()
-                        .saturating_sub(trim_end * samples_per_frame)
-                        .max(start);
-
-                    if start == end {
+                    if self.interleaved.is_empty() {
                         continue;
                     }
-                    return Ok(Some((timestamp, &self.interleaved[start..end])));
+                    return Ok(Some((first_valid_frame, &self.interleaved)));
                 }
                 Err(SymphoniaError::DecodeError(_)) => continue,
                 Err(error) if is_end_of_stream(&error) => {

@@ -94,7 +94,7 @@ footer {
 
 .action.is-primary {
   font-weight: 600;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
 }

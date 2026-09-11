@@ -8,6 +8,7 @@ pub mod index;
 pub mod menu;
 pub mod paths;
 pub mod projects;
+pub mod sources;
 pub mod state;
 pub mod sync;
 
@@ -67,6 +68,7 @@ pub fn run() {
             commands::journal_clear,
             commands::audio_peaks,
             commands::audio_undecodable,
+            commands::audio_regions_at_source,
             commands::audio_play,
             commands::audio_stop,
             commands::audio_set_gain,

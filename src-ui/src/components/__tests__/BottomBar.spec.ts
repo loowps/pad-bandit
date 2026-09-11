@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import BottomBar from '@/components/BottomBar.vue'
@@ -76,6 +76,24 @@ describe('BottomBar', () => {
     await sync.trigger('click')
 
     expect(useSyncStore().isOpen).toBe(true)
+  })
+
+  it('offers to read the card again only once it has changed', async () => {
+    const card = useCardStore()
+    const readAgain = vi.spyOn(card, 'readAgain').mockResolvedValue()
+    card.rootPath = '/media/SP-CARD'
+    card.status = 'valid'
+    card.presence = 'present'
+    const wrapper = mount(BottomBar)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.reread').exists()).toBe(false)
+
+    card.presence = 'stale'
+    await wrapper.vm.$nextTick()
+    await wrapper.get('.reread').trigger('click')
+
+    expect(wrapper.get('.orphans').text()).toBe('The card changed since it was read')
+    expect(readAgain).toHaveBeenCalledOnce()
   })
 })
 

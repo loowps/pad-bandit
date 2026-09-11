@@ -3,9 +3,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { useCardStore } from '@/stores/card'
 import { usePadsStore } from '@/stores/pads'
+import { useNoticesStore } from '@/stores/notices'
 import type { AppConfig } from '@/config'
 import type { CardPresence, CardSlot, CardState } from '@/card'
-import { PAD_COUNT } from '@/domain/pad'
+import { diskAudio, PAD_COUNT } from '@/domain/pad'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
@@ -294,5 +295,41 @@ describe('card presence', () => {
 
     expect(card.fingerprint).toBe('fp-after')
     expect(card.presence).toBe('present')
+  })
+
+  it('reading a changed card again keeps the pending work and takes a new baseline', async () => {
+    const card = useCardStore()
+    const pads = usePadsStore()
+    await card.restore()
+    pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+    presence = { present: true, fingerprint: 'presence-2' }
+    await card.checkPresence()
+    expect(card.presence).toBe('stale')
+
+    await card.readAgain()
+    await card.checkPresence()
+
+    expect(card.presence).toBe('present')
+    expect(pads.changeFor('A3')?.status).toBe('added')
+  })
+
+  it('says so when the card cannot be read again, and keeps the pending work', async () => {
+    const card = useCardStore()
+    const pads = usePadsStore()
+    await card.restore()
+    pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+    invokeMock.mockImplementation((command) =>
+      command === 'card_read'
+        ? Promise.reject({ code: 'notACard', message: 'no pad data' })
+        : Promise.resolve(presence),
+    )
+
+    await card.readAgain()
+
+    expect(useNoticesStore().entries[0]).toMatchObject({
+      severity: 'error',
+      title: 'The card could not be read again',
+    })
+    expect(pads.changeFor('A3')?.status).toBe('added')
   })
 })

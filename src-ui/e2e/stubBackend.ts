@@ -21,6 +21,10 @@ export interface StubBackend {
   missingFiles?: string[]
   entries?: Record<string, StubEntry[]>
   card?: { root: string; fingerprint: string; slots: StubSlot[] } | null
+  projects?: Record<
+    string,
+    { name: string; savedAt: number; cardRoot: string | null; slots: unknown[] }
+  >
 }
 
 export const STUB_PROJECT_PATH = '/sets/march.padbandit'
@@ -105,7 +109,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         cardRoot: string | null
         slots: unknown[]
       }
-      const files: Record<string, StubProject> = {}
+      const files: Record<string, StubProject> = { ...given.projects }
       let recent: string[] = []
       let journal: { path: string | null; project: StubProject } | null = null
 
@@ -196,6 +200,8 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
           return { hits, truncated: false }
         },
         audio_undecodable: () => [],
+        audio_regions_at_source: ({ requests }) =>
+          (requests as unknown as { region: unknown }[]).map((request) => request.region),
         audio_play: () => null,
         audio_stop: () => null,
         audio_seek: () => null,
@@ -325,6 +331,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
       missingFiles: backend.missingFiles ?? [],
       entries: backend.entries ?? {},
       card: backend.card ?? null,
+      projects: backend.projects ?? {},
     } as Required<StubBackend>,
   )
 }

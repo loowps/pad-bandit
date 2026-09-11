@@ -25,6 +25,7 @@ export interface SampleInfo {
   sizeBytes: number
   startFrame: number
   endFrame: number
+  sourcePath?: string
 }
 
 export interface CardSlot {

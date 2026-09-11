@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 use crate::index::{Indexes, SearchOutcome};
 use crate::paths::{FileGrants, Scopes};
 use crate::projects::{Journal, Project, ProjectStore, StoredProject};
+use crate::sources::CardSources;
 use crate::sync::{Preflight, SyncPlan};
 
 pub struct AppState {
@@ -92,7 +93,13 @@ impl AppState {
             crate::sync::apply::apply_plan(&mut context, plan)?
         };
 
-        let card = crate::card::read_card(&scopes, &card_path)?.state();
+        let mut card = crate::card::read_card(&scopes, &card_path)?.state();
+        let mut sources = CardSources::load(&app_data);
+        sources.learn_from_sync(&loaded.state(), &card, plan, &outcome.applied);
+        if let Err(error) = sources.save(&app_data) {
+            eprintln!("the source of each synced sample could not be saved: {error}");
+        }
+        sources.attach_to(&mut card);
         Ok(SyncResult { outcome, card })
     }
 
@@ -248,7 +255,9 @@ impl AppState {
 
     pub fn read_card(&self) -> Result<CardState> {
         let (scopes, card_path) = self.card_scope()?;
-        Ok(crate::card::read_card(&scopes, &card_path)?.state())
+        let mut card = crate::card::read_card(&scopes, &card_path)?.state();
+        CardSources::load(scopes.app_data()).attach_to(&mut card);
+        Ok(card)
     }
 
     pub fn card_presence(&self) -> crate::card::CardPresence {
@@ -538,6 +547,42 @@ mod tests {
             pad_info_before
         );
         assert!(!f._root.path().join("data").join("card-backups").exists());
+    }
+
+    #[test]
+    fn a_synced_sample_still_knows_its_source_after_a_restart() {
+        let (f, _) = card_under_sync();
+        f.state.add_browse_folder(&f.browse).expect("add folder");
+        let kick = f.browse.join("kick.wav");
+        crate::audio::testing::write_silence_wav(&kick, 44_100, 1_000, 2);
+        let plan = SyncPlan {
+            card_fingerprint: f.state.read_card().expect("read card").fingerprint,
+            slots: vec![crate::sync::PlannedSlot {
+                slot: 5,
+                action: crate::sync::PlannedAction::Write {
+                    source: kick.clone(),
+                },
+                edit: settings_only_plan(String::new()).slots[0].edit,
+            }],
+        };
+
+        let synced = f.state.apply_plan(&plan, &mut |_| {}).expect("apply");
+        let restarted =
+            AppState::load(&f.config_dir, f._root.path().join("data").as_path()).expect("restart");
+        let reread = restarted.read_card().expect("read card");
+
+        for card in [&synced.card, &reread] {
+            let sample = card.slots[5].sample.as_ref().expect("written sample");
+            assert_eq!(sample.source_path.as_deref(), Some(kick.as_path()));
+            assert_eq!(
+                card.slots[0]
+                    .sample
+                    .as_ref()
+                    .expect("untouched")
+                    .source_path,
+                None
+            );
+        }
     }
 
     #[test]

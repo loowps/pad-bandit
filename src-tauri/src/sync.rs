@@ -160,6 +160,21 @@ pub fn preflight(
     }
 
     let occupied = occupied_sizes(card);
+    let moved_away: BTreeSet<u8> = plan
+        .slots
+        .iter()
+        .filter_map(|planned| match planned.action {
+            PlannedAction::Move { from_slot } => Some(from_slot),
+            _ => None,
+        })
+        .collect();
+    let freed_at = |slot: u8| {
+        if moved_away.contains(&slot) {
+            0
+        } else {
+            occupied.get(&slot).copied().unwrap_or_default()
+        }
+    };
 
     for planned in &plan.slots {
         let slot = planned.slot;
@@ -171,9 +186,10 @@ pub fn preflight(
         match &planned.action {
             PlannedAction::Settings => {}
             PlannedAction::Delete => {
-                bytes_to_free += occupied.get(&slot).copied().unwrap_or_default();
+                bytes_to_free += freed_at(slot);
             }
             PlannedAction::Move { from_slot } => {
+                bytes_to_free += freed_at(slot);
                 if !occupied.contains_key(from_slot) {
                     problems.push(Problem::NothingAtOriginSlot {
                         slot,
@@ -187,7 +203,7 @@ pub fn preflight(
                 }
             }
             PlannedAction::Write { source } => {
-                bytes_to_free += occupied.get(&slot).copied().unwrap_or_default();
+                bytes_to_free += freed_at(slot);
                 match measure(scopes, source) {
                     Ok(bytes) => {
                         sizes.push(SizedSlot { slot, bytes });
@@ -479,6 +495,46 @@ mod tests {
 
         assert!(report.ok(), "{:?}", report.problems);
         assert_eq!(report.bytes_to_write, 0);
+        assert_eq!(report.bytes_to_free, f.card_sample_size(1));
+    }
+
+    #[test]
+    fn a_sample_moved_to_another_pad_frees_nothing() {
+        let f = fixture();
+        let moved_to_an_empty_pad = f.plan(vec![
+            move_slot(5, 0),
+            PlannedSlot {
+                slot: 0,
+                action: PlannedAction::Delete,
+                edit: edit(),
+            },
+        ]);
+        let swapped = f.plan(vec![move_slot(0, 1), move_slot(1, 0)]);
+        let budget = Budget::on(1 << 30);
+
+        let moved = preflight(&f.scopes, &f.card(), &moved_to_an_empty_pad, &budget);
+        let swap = preflight(&f.scopes, &f.card(), &swapped, &budget);
+
+        assert!(moved.ok(), "{:?}", moved.problems);
+        assert_eq!(moved.bytes_to_free, 0);
+        assert_eq!(swap.bytes_to_free, 0);
+    }
+
+    #[test]
+    fn a_move_onto_a_pad_in_use_frees_the_sample_it_replaces() {
+        let f = fixture();
+        let plan = f.plan(vec![
+            move_slot(1, 0),
+            PlannedSlot {
+                slot: 0,
+                action: PlannedAction::Delete,
+                edit: edit(),
+            },
+        ]);
+
+        let report = preflight(&f.scopes, &f.card(), &plan, &Budget::on(1 << 30));
+
+        assert!(report.ok(), "{:?}", report.problems);
         assert_eq!(report.bytes_to_free, f.card_sample_size(1));
     }
 

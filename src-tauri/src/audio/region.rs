@@ -13,14 +13,35 @@ pub struct Region {
     pub reverse: bool,
 }
 
-pub struct RegionReader {
-    source: AudioSource,
+pub trait BlockSource {
+    fn spec(&self) -> AudioSpec;
+    fn seek_to_frame(&mut self, frame: u64) -> Result<u64>;
+    fn next_block(&mut self) -> Result<Option<(u64, &[f32])>>;
+}
+
+impl BlockSource for AudioSource {
+    fn spec(&self) -> AudioSpec {
+        AudioSource::spec(self)
+    }
+
+    fn seek_to_frame(&mut self, frame: u64) -> Result<u64> {
+        AudioSource::seek_to_frame(self, frame)
+    }
+
+    fn next_block(&mut self) -> Result<Option<(u64, &[f32])>> {
+        AudioSource::next_block(self)
+    }
+}
+
+pub struct RegionReader<S: BlockSource = AudioSource> {
+    source: S,
     spec: AudioSpec,
     channels: usize,
     region: Region,
     window: Vec<f32>,
     window_offset: usize,
     cursor: u64,
+    source_next_frame: Option<u64>,
     position: u64,
     finished: bool,
 }
@@ -29,8 +50,10 @@ impl RegionReader {
     pub fn open(path: &Path, region: Region) -> Result<Self> {
         Self::from_source(AudioSource::open(path)?, region)
     }
+}
 
-    pub fn from_source(source: AudioSource, region: Region) -> Result<Self> {
+impl<S: BlockSource> RegionReader<S> {
+    pub fn from_source(source: S, region: Region) -> Result<Self> {
         let spec = source.spec();
         let channels = usize::from(spec.channels.max(1));
         let region = clamp_region(region, spec.frames);
@@ -43,6 +66,7 @@ impl RegionReader {
             window: Vec::new(),
             window_offset: 0,
             cursor: 0,
+            source_next_frame: None,
             position: 0,
             finished: false,
         };
@@ -148,30 +172,40 @@ impl RegionReader {
         }
 
         let wanted = self.cursor;
-        self.source.seek_to_frame(wanted)?;
-
-        let Some((timestamp, samples)) = self.source.next_block()? else {
-            self.finished = true;
-            return Ok(false);
-        };
-
-        let channels = self.channels;
-        let block_frames = (samples.len() / channels) as u64;
-        let skip = wanted.saturating_sub(timestamp).min(block_frames);
-        let take = (self.region.end - wanted).min(block_frames - skip);
-        if take == 0 {
-            self.finished = true;
-            return Ok(false);
+        if self.source_next_frame != Some(wanted) {
+            self.source.seek_to_frame(wanted)?;
         }
 
-        let from = (skip as usize) * channels;
-        let to = ((skip + take) as usize) * channels;
-        self.window.clear();
-        self.window.extend_from_slice(&samples[from..to]);
-        self.window_offset = 0;
-        self.cursor = wanted + take;
+        let channels = self.channels;
+        loop {
+            let Some((timestamp, samples)) = self.source.next_block()? else {
+                self.source_next_frame = None;
+                self.finished = true;
+                return Ok(false);
+            };
 
-        Ok(true)
+            let block_frames = (samples.len() / channels) as u64;
+            let block_end = timestamp + block_frames;
+            if block_end <= wanted {
+                continue;
+            }
+
+            let skip = wanted.saturating_sub(timestamp);
+            let take = (self.region.end - wanted).min(block_frames - skip);
+            if take == 0 {
+                self.finished = true;
+                return Ok(false);
+            }
+            let from = (skip as usize) * channels;
+            let to = ((skip + take) as usize) * channels;
+            self.window.clear();
+            self.window.extend_from_slice(&samples[from..to]);
+            self.window_offset = 0;
+            self.cursor = wanted + take;
+            self.source_next_frame = Some(block_end);
+
+            return Ok(true);
+        }
     }
 
     fn refill_backwards(&mut self) -> Result<bool> {
@@ -214,6 +248,7 @@ impl RegionReader {
         let channels = self.channels;
         let wanted_frames = span.len() / channels;
         self.source.seek_to_frame(start)?;
+        self.source_next_frame = None;
 
         let mut filled = 0usize;
         let mut expected = start;
@@ -222,11 +257,11 @@ impl RegionReader {
                 break;
             };
             let block_frames = samples.len() / channels;
-            let skip = (expected.saturating_sub(timestamp) as usize).min(block_frames);
-            let taking = (block_frames - skip).min(wanted_frames - filled);
-            if taking == 0 {
-                break;
+            let skip = expected.saturating_sub(timestamp) as usize;
+            if skip >= block_frames {
+                continue;
             }
+            let taking = (block_frames - skip).min(wanted_frames - filled);
 
             span[filled * channels..(filled + taking) * channels]
                 .copy_from_slice(&samples[skip * channels..(skip + taking) * channels]);
@@ -252,6 +287,8 @@ fn clamp_region(region: Region, frames: Option<u64>) -> Region {
 mod tests {
     use super::*;
     use crate::audio::testing::write_ramp_wav;
+    use std::cell::Cell;
+    use std::rc::Rc;
     use tempfile::TempDir;
 
     const SAMPLE_RATE: u32 = 44_100;
@@ -278,7 +315,7 @@ mod tests {
         }
     }
 
-    fn read_all(reader: &mut RegionReader, limit: usize) -> Vec<f32> {
+    fn read_all<S: BlockSource>(reader: &mut RegionReader<S>, limit: usize) -> Vec<f32> {
         let mut collected = Vec::new();
         let mut buffer = vec![0.0f32; 512 * reader.channels()];
         while collected.len() < limit {
@@ -469,6 +506,111 @@ mod tests {
 
         assert!(samples.is_empty());
         assert!(reader.is_finished());
+    }
+
+    struct CoarseSource {
+        samples: Vec<f32>,
+        block_frames: usize,
+        next_frame: usize,
+        seeks: Rc<Cell<usize>>,
+    }
+
+    impl CoarseSource {
+        fn ramp(frames: usize, block_frames: usize) -> (Self, Rc<Cell<usize>>) {
+            let seeks = Rc::new(Cell::new(0));
+            let source = Self {
+                samples: (0..frames).map(|frame| frame as f32 / 32_768.0).collect(),
+                block_frames,
+                next_frame: 0,
+                seeks: Rc::clone(&seeks),
+            };
+            (source, seeks)
+        }
+    }
+
+    impl BlockSource for CoarseSource {
+        fn spec(&self) -> AudioSpec {
+            AudioSpec {
+                channels: 1,
+                sample_rate: SAMPLE_RATE,
+                frames: Some(self.samples.len() as u64),
+            }
+        }
+
+        fn seek_to_frame(&mut self, frame: u64) -> Result<u64> {
+            let block = frame as usize / self.block_frames;
+            self.next_frame = block.saturating_sub(1) * self.block_frames;
+            self.seeks.set(self.seeks.get() + 1);
+            Ok(self.next_frame as u64)
+        }
+
+        fn next_block(&mut self) -> Result<Option<(u64, &[f32])>> {
+            if self.next_frame >= self.samples.len() {
+                return Ok(None);
+            }
+            let start = self.next_frame;
+            let end = (start + self.block_frames).min(self.samples.len());
+            self.next_frame = end;
+            Ok(Some((start as u64, &self.samples[start..end])))
+        }
+    }
+
+    #[test]
+    fn a_seek_that_lands_a_block_early_still_starts_on_the_wanted_frame() {
+        let (source, _) = CoarseSource::ramp(20_000, 1152);
+        let mut reader = RegionReader::from_source(source, region(5000, 6000)).expect("region");
+
+        let samples = read_all(&mut reader, 10_000);
+
+        assert_eq!(samples.len(), 1000);
+        assert_eq!(frame_index(samples[0]), 5000);
+        assert_eq!(frame_index(samples[999]), 5999);
+    }
+
+    #[test]
+    fn playing_on_decodes_forward_instead_of_seeking_before_every_block() {
+        let (source, seeks) = CoarseSource::ramp(20_000, 1152);
+        let mut reader = RegionReader::from_source(source, region(0, 20_000)).expect("region");
+
+        let samples = read_all(&mut reader, 30_000);
+
+        assert_eq!(seeks.get(), 1);
+        assert_eq!(samples.len(), 20_000);
+        for (index, value) in samples.iter().enumerate() {
+            assert_eq!(frame_index(*value), index as u64, "frame {index}");
+        }
+    }
+
+    #[test]
+    fn a_coarse_source_loops_and_reverses_on_the_right_frames() {
+        let (looping, _) = CoarseSource::ramp(20_000, 1152);
+        let (reversed, _) = CoarseSource::ramp(20_000, 1152);
+        let mut looped = RegionReader::from_source(
+            looping,
+            Region {
+                looping: true,
+                ..region(5000, 6000)
+            },
+        )
+        .expect("region");
+        let mut backwards = RegionReader::from_source(
+            reversed,
+            Region {
+                reverse: true,
+                ..region(5000, 6000)
+            },
+        )
+        .expect("region");
+
+        let forwards = read_all(&mut looped, 2500);
+        let backwards = read_all(&mut backwards, 10_000);
+
+        assert_eq!(frame_index(forwards[999]), 5999);
+        assert_eq!(frame_index(forwards[1000]), 5000);
+        assert_eq!(frame_index(forwards[2000]), 5000);
+        assert_eq!(backwards.len(), 1000);
+        assert_eq!(frame_index(backwards[0]), 5999);
+        assert_eq!(frame_index(backwards[999]), 5000);
     }
 
     #[test]

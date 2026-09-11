@@ -10,6 +10,7 @@ import PaneDivider from '@/components/PaneDivider.vue'
 import PadParameters from '@/components/PadParameters.vue'
 import PadWaveform from '@/components/PadWaveform.vue'
 import RecoveryDialog from '@/components/RecoveryDialog.vue'
+import RestoreDialog from '@/components/RestoreDialog.vue'
 import PadFillPrompt from '@/components/PadFillPrompt.vue'
 import SyncPreview from '@/components/SyncPreview.vue'
 import { onMounted, onUnmounted } from 'vue'
@@ -82,6 +83,7 @@ onUnmounted(() => {
   <SyncPreview />
   <PadFillPrompt />
   <RecoveryDialog />
+  <RestoreDialog />
   <AboutDialog />
 </template>
 

@@ -83,6 +83,8 @@ pub struct SampleInfo {
     pub size_bytes: u64,
     pub start_frame: u64,
     pub end_frame: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -285,6 +287,7 @@ fn sample_info(record: &PadRecord, file: &SampleFile) -> SampleInfo {
         size_bytes: file.size,
         start_frame: byte_offset_to_frame(record.user_start, block_align),
         end_frame: byte_offset_to_frame(record.user_end, block_align),
+        source_path: None,
     }
 }
 
