@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AboutDialog from '@/components/AboutDialog.vue'
 import AppToolbar from '@/components/AppToolbar.vue'
 import BankGrid from '@/components/BankGrid.vue'
 import BottomBar from '@/components/BottomBar.vue'
@@ -13,6 +14,7 @@ import PadFillPrompt from '@/components/PadFillPrompt.vue'
 import SyncPreview from '@/components/SyncPreview.vue'
 import { onMounted, onUnmounted } from 'vue'
 import { aDialogIsOpen } from '@/composables/useDialog'
+import { useAboutStore } from '@/stores/about'
 import { useCardStore } from '@/stores/card'
 import { useFileBrowserStore } from '@/stores/fileBrowser'
 import { useProjectsStore } from '@/stores/projects'
@@ -29,9 +31,16 @@ const browser = useFileBrowserStore()
 const card = useCardStore()
 const projects = useProjectsStore()
 const theme = useThemeStore()
+const about = useAboutStore()
 
 onMounted(async () => {
-  await Promise.all([theme.restore(), theme.listenToMenu(), browser.restore(), card.restore()])
+  await Promise.all([
+    theme.restore(),
+    theme.listenToMenu(),
+    about.listenToMenu(),
+    browser.restore(),
+    card.restore(),
+  ])
   await Promise.all([projects.refresh(), projects.offerRecovery(), projects.listenToMenu()])
   projects.startJournal()
   card.watchPresence()
@@ -40,6 +49,7 @@ onMounted(async () => {
 onUnmounted(() => {
   projects.stopJournal()
   theme.stopListeningToMenu()
+  about.stopListeningToMenu()
   card.stopWatching()
 })
 </script>
@@ -72,6 +82,7 @@ onUnmounted(() => {
   <SyncPreview />
   <PadFillPrompt />
   <RecoveryDialog />
+  <AboutDialog />
 </template>
 
 <style scoped>

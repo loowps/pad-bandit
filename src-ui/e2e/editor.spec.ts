@@ -171,6 +171,33 @@ test('starting a new project from the menu drops the pending work', async ({ pag
   await expect(page.getByRole('button', { name: 'Pad A1, sample removed' })).toBeHidden()
 })
 
+test('the Help menu opens the about dialog and its links leave the app', async ({ page }) => {
+  await expect
+    .poll(async () =>
+      (await backendCalls(page)).filter(
+        (call) => (call.args as { event?: string }).event === 'menu-action',
+      ),
+    )
+    .toHaveLength(3)
+  await chooseFromMenu(page, { kind: 'about' })
+
+  const about = page.getByRole('dialog', { name: 'About Pad Bandit' })
+  await expect(about.getByRole('img', { name: 'Pad Bandit' })).toBeVisible()
+  await expect(about.getByText('Version 0.1.0')).toBeVisible()
+  await expect(about.getByText('by Loowps')).toBeVisible()
+
+  await about.getByRole('button', { name: 'Bandcamp' }).click()
+  const calls = await backendCalls(page)
+  expect(calls).toContainEqual({
+    command: 'plugin:opener|open_url',
+    args: { url: 'https://loowps.bandcamp.com' },
+  })
+  await expect(page).toHaveURL('/')
+
+  await about.getByRole('button', { name: 'Close' }).click()
+  await expect(about).toBeHidden()
+})
+
 test('shows what changed on a pad and discards it again', async ({ page }) => {
   await page.getByRole('button', { name: 'Choose card folder…' }).click()
   await expect(page.getByText('Card folder recognised')).toBeVisible()

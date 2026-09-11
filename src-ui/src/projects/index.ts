@@ -60,6 +60,7 @@ export type MenuAction =
   | { kind: 'forgetRecent' }
   | { kind: 'openRecent'; path: string }
   | { kind: 'setTheme'; theme: Theme }
+  | { kind: 'about' }
 
 export function pickProjectToSave(): Promise<string | null> {
   return invoke<string | null>('project_pick_to_save')
