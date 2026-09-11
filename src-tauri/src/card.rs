@@ -170,9 +170,20 @@ pub fn sample_directory(card_root: &Path) -> PathBuf {
 }
 
 pub fn sample_file_name(slot: u8) -> String {
+    format!("{}.WAV", sample_stem(slot))
+}
+
+pub fn sample_file_name_keeping_extension(slot: u8, current_name: &str) -> String {
+    let extension = current_name
+        .rsplit_once('.')
+        .map_or("WAV", |(_, extension)| extension);
+    format!("{}.{extension}", sample_stem(slot))
+}
+
+fn sample_stem(slot: u8) -> String {
     let bank = BANK_LETTERS[slot as usize / PADS_PER_BANK];
     let number = slot as usize % PADS_PER_BANK + 1;
-    format!("{bank}{number:07}.WAV")
+    format!("{bank}{number:07}")
 }
 
 pub fn slot_from_sample_file_name(file_name: &str) -> Option<u8> {
@@ -180,7 +191,10 @@ pub fn slot_from_sample_file_name(file_name: &str) -> Option<u8> {
     if !SAMPLE_EXTENSIONS.contains(&extension.to_uppercase().as_str()) {
         return None;
     }
+    slot_from_sample_stem(stem)
+}
 
+pub fn slot_from_sample_stem(stem: &str) -> Option<u8> {
     let mut characters = stem.chars();
     let bank = characters.next()?.to_ascii_uppercase();
     let digits = characters.as_str();
@@ -783,6 +797,22 @@ mod tests {
         ] {
             assert_eq!(slot_from_sample_file_name(name), None, "{name}");
         }
+    }
+
+    #[test]
+    fn a_renamed_sample_keeps_its_own_extension() {
+        assert_eq!(
+            sample_file_name_keeping_extension(5, "A0000001.AIF"),
+            "A0000006.AIF"
+        );
+        assert_eq!(
+            sample_file_name_keeping_extension(12, "A0000001.WAV"),
+            "B0000001.WAV"
+        );
+        assert_eq!(
+            sample_file_name_keeping_extension(0, "b0000005.wav"),
+            "A0000001.wav"
+        );
     }
 
     #[test]

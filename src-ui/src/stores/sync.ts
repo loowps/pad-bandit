@@ -33,6 +33,7 @@ export const useSyncStore = defineStore('sync', () => {
   const report = ref<Preflight | null>(null)
   const checking = ref(false)
   const error = ref<string | null>(null)
+  let latestCheck = 0
 
   const rows = computed<PreviewRow[]>(() => {
     const pads = usePadsStore()
@@ -92,10 +93,20 @@ export const useSyncStore = defineStore('sync', () => {
       }
     }
     deselected.value = next
+    recheck()
   }
 
   function selectAll(): void {
+    if (deselected.value.size === 0) {
+      return
+    }
     deselected.value = new Set()
+    recheck()
+  }
+
+  function recheck(): void {
+    report.value = null
+    void check()
   }
 
   function open(): void {
@@ -116,17 +127,26 @@ export const useSyncStore = defineStore('sync', () => {
       return null
     }
 
+    const asked = ++latestCheck
+    const isLatest = () => asked === latestCheck
     checking.value = true
     error.value = null
     try {
-      report.value = await preflightSync(planNow(card.fingerprint))
-      return report.value
+      const found = await preflightSync(planNow(card.fingerprint))
+      if (isLatest()) {
+        report.value = found
+      }
+      return found
     } catch (cause) {
-      error.value = explain(cause, 'The card could not be checked.')
-      report.value = null
+      if (isLatest()) {
+        error.value = explain(cause, 'The card could not be checked.')
+        report.value = null
+      }
       return null
     } finally {
-      checking.value = false
+      if (isLatest()) {
+        checking.value = false
+      }
     }
   }
 

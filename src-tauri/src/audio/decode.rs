@@ -244,7 +244,9 @@ fn audio_error(error: SymphoniaError) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::testing::write_tone_wav;
+    use crate::audio::testing::{
+        IMA_ADPCM_FRAMES_PER_BLOCK, write_ima_adpcm_silence_wav, write_tone_wav,
+    };
     use tempfile::TempDir;
 
     #[test]
@@ -295,5 +297,22 @@ mod tests {
 
         assert!(is_supported_extension("wav"));
         assert!(AudioSource::open(&path).is_ok());
+    }
+
+    #[test]
+    fn a_wav_stored_as_ima_adpcm_decodes_rather_than_being_refused() {
+        let root = TempDir::new().expect("temp dir");
+        let path = root.path().join("adpcm.wav");
+        write_ima_adpcm_silence_wav(&path, 44_100, 4);
+        let frames = u64::from(4 * IMA_ADPCM_FRAMES_PER_BLOCK);
+
+        let mut source = AudioSource::open(&path).expect("open adpcm wav");
+        let mut decoded = 0u64;
+        while let Some((_, block)) = source.next_block().expect("decode adpcm") {
+            decoded += block.len() as u64;
+        }
+
+        assert_eq!(source.spec().frames, Some(frames));
+        assert_eq!(decoded, frames);
     }
 }

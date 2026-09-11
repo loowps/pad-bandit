@@ -162,6 +162,11 @@ export const usePadsStore = defineStore('pads', () => {
     }
     pad.audio = audio
     pad.sample = sampleBehind(audio)
+    pad.settings = {
+      ...pad.settings,
+      startFrame: pad.sample?.startFrame ?? 0,
+      endFrame: pad.sample?.endFrame ?? 0,
+    }
     intentById.value[id] = audio ? sampleIntent(audio) : clearIntent()
     setMissing(id, null)
   }

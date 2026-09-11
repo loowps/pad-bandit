@@ -90,7 +90,6 @@ function removeRoot(): void {
         <path v-else d="M5.9 2.6 11 1.4v1.5L7.2 3.8v5.8A2.2 2.2 0 1 1 5.9 7.6z" />
       </svg>
       <span class="name">{{ node.name }}</span>
-      <span v-if="row.location" class="location">{{ row.location }}</span>
       <span v-if="isLoading" class="loading">…</span>
       <span v-else-if="failure" class="failure">{{ failure }}</span>
     </button>
@@ -184,21 +183,6 @@ function removeRoot(): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.location {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 0.6875rem;
-  color: var(--text-subtle);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.row-wrap.is-selected .location {
-  color: inherit;
-  opacity: 0.75;
 }
 
 .loading {

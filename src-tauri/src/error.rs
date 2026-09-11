@@ -35,6 +35,9 @@ pub enum Error {
     )]
     UnpairedMove { slot: u8, from_slot: u8 },
 
+    #[error("the plan fails its pre-flight check with {problems} problem(s)")]
+    PreflightFailed { problems: usize },
+
     #[error("a sync is already running")]
     SyncInProgress,
 
@@ -81,6 +84,7 @@ impl Error {
             Self::NoCardSelected => "noCardSelected",
             Self::CardChanged => "cardChanged",
             Self::UnpairedMove { .. } => "unpairedMove",
+            Self::PreflightFailed { .. } => "preflightFailed",
             Self::SyncInProgress => "syncInProgress",
             Self::UnknownFolder(_) => "unknownFolder",
             Self::UngrantedFile(_) => "ungrantedFile",
@@ -131,6 +135,7 @@ mod tests {
                 slot: 0,
                 from_slot: 1,
             },
+            Error::PreflightFailed { problems: 2 },
             Error::SyncInProgress,
             Error::UnknownFolder("f1".into()),
             Error::UngrantedFile(PathBuf::from("/x")),
