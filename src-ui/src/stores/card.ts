@@ -85,8 +85,8 @@ export const useCardStore = defineStore('card', () => {
     await load()
   }
 
-  async function adopt(state: CardState): Promise<void> {
-    usePadsStore().loadFromCard(state)
+  async function adopt(state: CardState, rewritten: ReadonlySet<number>): Promise<void> {
+    usePadsStore().adoptSync(state, rewritten)
     fingerprint.value = state.fingerprint
     seenAt = (await readCardPresence()).fingerprint
     presence.value = 'present'

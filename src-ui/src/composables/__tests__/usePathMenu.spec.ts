@@ -81,13 +81,4 @@ describe('usePathMenu', () => {
       title: 'Path copied',
     })
   })
-
-  it('copies the path without the verbatim prefix the backend canonicalises to', async () => {
-    const [, copy] = pathMenuItems('\\\\?\\D:\\samples\\kick.wav')
-
-    await copy?.run()
-
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('D:\\samples\\kick.wav')
-    expect(useNoticesStore().entries[0]?.detail).toBe('D:\\samples\\kick.wav')
-  })
 })

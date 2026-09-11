@@ -49,6 +49,17 @@ pub fn reveal(scopes: &Scopes, path: &Path) -> Result<()> {
         .map_err(|cause| Error::Reveal(cause.to_string()))
 }
 
+pub fn missing_files(scopes: &Scopes, paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    paths
+        .into_iter()
+        .filter(|path| {
+            !scopes
+                .readable(path)
+                .is_ok_and(|resolved| resolved.is_file())
+        })
+        .collect()
+}
+
 pub(crate) fn is_audio_file(name: &str, is_dir: bool) -> bool {
     if is_dir {
         return false;
@@ -155,6 +166,25 @@ mod tests {
         let refusal = reveal(&f.scopes, &f.browse.join("gone.wav")).expect_err("refusal");
 
         assert!(matches!(refusal, Error::UnresolvablePath(_)));
+    }
+
+    #[test]
+    fn a_file_that_is_gone_out_of_scope_or_a_folder_counts_as_missing() {
+        let f = fixture();
+        let present = f.browse.join("kick.wav");
+        let gone = f.browse.join("gone.wav");
+        let outside = f.elsewhere.join("snare.wav");
+        let folder = f.browse.join("drums");
+        write(&present, b"x");
+        write(&outside, b"x");
+        std::fs::create_dir(&folder).expect("create dir");
+
+        let missing = missing_files(
+            &f.scopes,
+            vec![present, gone.clone(), outside.clone(), folder.clone()],
+        );
+
+        assert_eq!(missing, vec![gone, outside, folder]);
     }
 
     #[test]

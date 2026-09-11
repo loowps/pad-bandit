@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::card::PadEdit;
 use crate::error::{Error, Result};
+use crate::paths::simplified;
 
 pub const PROJECT_VERSION: u32 = 1;
 pub const PROJECT_EXTENSION: &str = "padbandit";
@@ -51,6 +52,18 @@ pub struct Project {
     pub saved_at: u64,
     pub card_root: Option<PathBuf>,
     pub slots: Vec<ProjectSlot>,
+}
+
+impl Project {
+    fn with_simplified_paths(mut self) -> Self {
+        self.card_root = self.card_root.as_deref().map(simplified);
+        for slot in &mut self.slots {
+            if let Some(AudioRef::Disk { path }) = &mut slot.audio {
+                *path = simplified(path);
+            }
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -120,7 +133,10 @@ impl ProjectStore {
     pub fn read_journal(&self) -> Option<Journal> {
         let bytes = std::fs::read(&self.journal).ok()?;
         let journal: Journal = serde_json::from_slice(&bytes).ok()?;
-        (journal.project.version <= PROJECT_VERSION).then_some(journal)
+        (journal.project.version <= PROJECT_VERSION).then(|| Journal {
+            path: journal.path.as_deref().map(simplified),
+            project: journal.project.with_simplified_paths(),
+        })
     }
 
     pub fn clear_journal(&self) -> Result<()> {
@@ -177,7 +193,7 @@ fn read_project(path: &Path) -> Result<Project> {
             version: project.version,
         });
     }
-    Ok(project)
+    Ok(project.with_simplified_paths())
 }
 
 fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -416,6 +432,39 @@ mod tests {
             f.store.open(&path),
             Err(Error::UnsupportedProjectVersion { .. })
         ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn verbatim_paths_saved_by_an_older_build_reopen_in_their_plain_form() {
+        let f = fixture();
+        let path = f.file("old");
+        let mut old = project();
+        old.card_root = Some(PathBuf::from(r"\\?\E:\"));
+        old.slots[1].audio = Some(AudioRef::Disk {
+            path: PathBuf::from(r"\\?\D:\samples\kick.wav"),
+        });
+        std::fs::write(&path, serde_json::to_vec(&old).expect("serialise")).expect("write");
+        f.store
+            .write_journal(&Journal {
+                path: Some(PathBuf::from(r"\\?\D:\sets\old.padbandit")),
+                project: old,
+            })
+            .expect("journal");
+
+        let reopened = f.store.open(&path).expect("open").project;
+        let recovered = f.store.read_journal().expect("journal");
+
+        let plain_kick = Some(AudioRef::Disk {
+            path: PathBuf::from(r"D:\samples\kick.wav"),
+        });
+        assert_eq!(reopened.card_root, Some(PathBuf::from(r"E:\")));
+        assert_eq!(reopened.slots[1].audio, plain_kick);
+        assert_eq!(
+            recovered.path,
+            Some(PathBuf::from(r"D:\sets\old.padbandit"))
+        );
+        assert_eq!(recovered.project.slots[1].audio, plain_kick);
     }
 
     #[test]

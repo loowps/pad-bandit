@@ -32,6 +32,7 @@ export type Problem =
   | { kind: 'sourceUnreadable'; slot: number; source: string; reason: string }
   | { kind: 'sampleTooLong'; slot: number; bytes: number; cap: number }
   | { kind: 'nothingAtOriginSlot'; slot: number; fromSlot: number }
+  | { kind: 'unpairedMove'; slot: number; fromSlot: number }
 
 export interface SizedSlot {
   slot: number

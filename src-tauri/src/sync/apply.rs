@@ -85,6 +85,10 @@ pub struct Apply<'a> {
 }
 
 pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcome> {
+    if let Some(&(slot, from_slot)) = crate::sync::unpaired_moves(plan).first() {
+        return Err(Error::UnpairedMove { slot, from_slot });
+    }
+
     let card_root = context.card.root().to_path_buf();
     let samples = card::sample_directory(&card_root);
     context.scopes.writable(&samples)?;
@@ -685,6 +689,60 @@ mod tests {
             "the audio itself is untouched"
         );
         assert_eq!(f.strays(), 0);
+    }
+
+    #[test]
+    fn half_of_a_swap_is_refused_before_anything_on_the_card_is_touched() {
+        let f = fixture(2);
+        let files_before = wav_files(&f.samples);
+        let pad_info_before = f.pad_info();
+        let card = f.card();
+        let mut report = |_: Progress| {};
+        let mut context = Apply {
+            scopes: &f.scopes,
+            card: &card,
+            app_data: &f.app_data,
+            cancel: None,
+            report: &mut report,
+        };
+
+        let refusal = apply_plan(&mut context, &plan(vec![moved(0, 1)])).expect_err("refused");
+
+        assert!(matches!(
+            refusal,
+            Error::UnpairedMove {
+                slot: 0,
+                from_slot: 1
+            }
+        ));
+        assert_eq!(wav_files(&f.samples), files_before);
+        assert_eq!(f.pad_info(), pad_info_before);
+        assert!(!f.app_data.join(BACKUPS_DIRECTORY).exists());
+    }
+
+    #[test]
+    fn a_move_whose_origin_takes_a_new_sample_keeps_both() {
+        let f = fixture(2);
+
+        let outcome = f
+            .run(&plan(vec![
+                moved(5, 0),
+                write(0, f.source("kick.wav", 800)),
+            ]))
+            .0;
+
+        assert!(outcome.failures.is_empty());
+        assert_eq!(wav_files(&f.samples), 3);
+        assert_eq!(f.card().records()[5].original_end, 512 + 4_000);
+        assert_eq!(f.strays(), 0);
+    }
+
+    fn wav_files(samples: &Path) -> usize {
+        std::fs::read_dir(samples)
+            .expect("samples")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".WAV"))
+            .count()
     }
 
     #[test]

@@ -142,7 +142,7 @@ pub fn resolve(path: &Path) -> Result<PathBuf> {
     let mut cursor = path.to_path_buf();
 
     loop {
-        if let Ok(existing) = cursor.canonicalize() {
+        if let Ok(existing) = dunce::canonicalize(&cursor) {
             let mut resolved = existing;
             resolved.extend(tail.iter().rev());
             return Ok(resolved);
@@ -155,6 +155,10 @@ pub fn resolve(path: &Path) -> Result<PathBuf> {
             return Err(Error::UnresolvablePath(path.to_path_buf()));
         }
     }
+}
+
+pub fn simplified(path: &Path) -> PathBuf {
+    dunce::simplified(path).to_path_buf()
 }
 
 #[cfg(test)]
@@ -327,6 +331,30 @@ mod tests {
             scopes.set_card_root(Some(&file)),
             Err(Error::NotADirectory(_))
         ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_resolved_disk_path_carries_no_verbatim_prefix() {
+        let f = fixture();
+
+        for path in [f.card.clone(), f.card.join("not-yet-written.wav")] {
+            let resolved = resolve(&path).expect("resolve");
+            assert!(!resolved.to_string_lossy().starts_with(r"\\?\"));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_verbatim_path_stored_by_an_older_build_still_matches_its_scope() {
+        let f = fixture();
+        let verbatim = PathBuf::from(format!(
+            r"\\?\{}",
+            resolve(&f.card).expect("resolve").display()
+        ));
+
+        assert!(f.scopes.writable(&verbatim.join("PAD_INFO.BIN")).is_ok());
+        assert_eq!(simplified(&verbatim), resolve(&f.card).expect("resolve"));
     }
 
     #[test]

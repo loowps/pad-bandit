@@ -1,7 +1,7 @@
 import { type MenuItem, showContextMenu } from '@/composables/useContextMenu'
 import { baseName, getFileSystemGateway } from '@/filesystem'
 import { explain } from '@/domain/errors'
-import { revealLabel, simplifiedPath } from '@/domain/platform'
+import { revealLabel } from '@/domain/platform'
 import { useNoticesStore } from '@/stores/notices'
 
 export function showPathMenu(event: MouseEvent, path: string | null): void {
@@ -48,16 +48,15 @@ async function copyPath(path: string | null): Promise<void> {
   }
 
   const notices = useNoticesStore()
-  const copied = simplifiedPath(path)
 
-  if (await writeToClipboard(copied)) {
-    notices.notify({ severity: 'info', source: 'clipboard', title: 'Path copied', detail: copied })
+  if (await writeToClipboard(path)) {
+    notices.notify({ severity: 'info', source: 'clipboard', title: 'Path copied', detail: path })
   } else {
     notices.notify({
       severity: 'warning',
       source: 'clipboard',
       title: 'The path could not be copied',
-      detail: copied,
+      detail: path,
     })
   }
 }

@@ -37,7 +37,7 @@ const portabilityLabel = computed(() => {
 })
 
 const orphanLabel = computed(() => {
-  const count = projects.orphans.length
+  const count = pads.missingCount
   return count === 1 ? '1 saved pad lost its source' : `${count} saved pads lost their source`
 })
 
@@ -102,7 +102,7 @@ const presenceLabel = computed(() => {
 
     <div class="actions">
       <span v-if="presenceLabel" class="orphans">{{ presenceLabel }}</span>
-      <span v-else-if="projects.hasOrphans" class="orphans" :title="orphanLabel">{{
+      <span v-else-if="pads.missingCount > 0" class="orphans" :title="orphanLabel">{{
         orphanLabel
       }}</span>
       <span v-else-if="showsPortability" class="portability">{{ portabilityLabel }}</span>

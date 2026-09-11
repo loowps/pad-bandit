@@ -18,6 +18,7 @@ export interface StubBackend {
   cardPath?: string | null
   pickedFolder?: string | null
   pickedProject?: string | null
+  missingFiles?: string[]
   entries?: Record<string, StubEntry[]>
   card?: { root: string; fingerprint: string; slots: StubSlot[] } | null
 }
@@ -164,6 +165,8 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
         },
         pick_folder: () => given.pickedFolder,
         list_dir: ({ path }) => given.entries[path] ?? [],
+        files_missing: ({ paths }) =>
+          (paths as unknown as string[]).filter((path) => given.missingFiles.includes(path)),
         reveal_in_file_manager: () => null,
         index_busy: () => false,
         index_refresh: () => null,
@@ -316,6 +319,7 @@ export async function stubBackend(page: Page, backend: StubBackend = {}): Promis
       cardPath: backend.cardPath ?? null,
       pickedFolder: backend.pickedFolder ?? null,
       pickedProject: backend.pickedProject ?? STUB_PROJECT_PATH,
+      missingFiles: backend.missingFiles ?? [],
       entries: backend.entries ?? {},
       card: backend.card ?? null,
     } as Required<StubBackend>,

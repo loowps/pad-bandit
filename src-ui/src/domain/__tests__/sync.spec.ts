@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { plannedAction, previewRows, syncPlan } from '@/domain/sync'
+import {
+  linkedPadIds,
+  plannedAction,
+  type PreviewRow,
+  previewRows,
+  rewrittenSlots,
+  syncPlan,
+} from '@/domain/sync'
 import { cardAudio, createEmptyCard, diskAudio, type Pad, type PadId } from '@/domain/pad'
 import type { PadChange } from '@/domain/plan'
 import type { SampleInfo } from '@/card'
@@ -30,6 +37,71 @@ function change(
     ...over,
   }
 }
+
+describe('rows that only make sense together', () => {
+  function row(padId: PadId, slot: number, action: PreviewRow['action']): PreviewRow {
+    return { padId, slot, headline: '', detail: '', action }
+  }
+
+  const rows = [
+    row('A1', 0, { kind: 'move', fromSlot: 1 }),
+    row('A2', 1, { kind: 'move', fromSlot: 2 }),
+    row('A3', 2, { kind: 'move', fromSlot: 0 }),
+    row('B1', 12, { kind: 'move', fromSlot: 13 }),
+    row('B2', 13, { kind: 'delete' }),
+    row('C1', 24, { kind: 'settings' }),
+  ]
+
+  it('follow a rotation all the way round', () => {
+    expect(linkedPadIds(rows, 'A2').sort()).toEqual(['A1', 'A2', 'A3'])
+  })
+
+  it('tie a move to the pad it empties', () => {
+    expect(linkedPadIds(rows, 'B2').sort()).toEqual(['B1', 'B2'])
+  })
+
+  it('leave a row that stands alone on its own', () => {
+    expect(linkedPadIds(rows, 'C1')).toEqual(['C1'])
+  })
+})
+
+describe('the slots a sync rewrote', () => {
+  const edit = {
+    settings: {
+      volume: 127,
+      lofi: false,
+      loop: false,
+      gate: true,
+      reverse: false,
+      tempoMode: 'off' as const,
+      originalTempo: 120,
+      userTempo: 120,
+    },
+    startFrame: 0,
+    endFrame: 0,
+  }
+
+  it('are the applied ones plus the slots an applied move emptied', () => {
+    const plan = {
+      cardFingerprint: 'fp',
+      slots: [
+        { slot: 4, action: { kind: 'move' as const, fromSlot: 0 }, edit },
+        { slot: 7, action: { kind: 'move' as const, fromSlot: 9 }, edit },
+        { slot: 2, action: { kind: 'settings' as const }, edit },
+        { slot: 3, action: { kind: 'delete' as const }, edit },
+      ],
+    }
+    const outcome = {
+      applied: [4, 2],
+      skipped: [3],
+      failures: [{ slot: 7, reason: 'gone' }],
+      cancelled: true,
+      verified: true,
+    }
+
+    expect([...rewrittenSlots(plan, outcome)].sort()).toEqual([0, 2, 4])
+  })
+})
 
 describe('planned actions', () => {
   it('maps each change status onto what the writer has to do', () => {

@@ -18,6 +18,7 @@ import {
   setRegionStart,
 } from '@/domain/region'
 import { preciseTime } from '@/domain/format'
+import { missingSourceLabel } from '@/domain/project'
 
 type DragMode = 'move' | 'start' | 'end' | 'scrub' | 'playhead'
 
@@ -39,7 +40,13 @@ const columns = computed(() => Math.floor(viewWidth.value * pixelRatio.value))
 
 const selectedPad = computed(() => ui.selectedPad)
 
-const audioPath = computed(() => selectedPad.value?.audio?.path ?? null)
+const missing = computed(() => {
+  const pad = selectedPad.value
+  const source = pad ? pads.missingFor(pad.id) : null
+  return pad && source ? { padId: pad.id, ...missingSourceLabel(source) } : null
+})
+
+const audioPath = computed(() => (missing.value ? null : (selectedPad.value?.audio?.path ?? null)))
 
 const { peaks, isLoading, error: loadError } = useWaveformPeaks(audioPath, columns)
 
@@ -290,6 +297,15 @@ function endDrag(event: PointerEvent): void {
   >
     <p v-if="!selectedPad" class="notice">Select a pad to edit its sample.</p>
 
+    <div v-else-if="missing" class="missing" role="status">
+      <span class="headline">{{ missing.name }} can no longer be found</span>
+      <span class="location">{{ missing.location }}</span>
+      <span class="hint">Drop a file here to re-link it. The pad's saved settings come back.</span>
+      <button type="button" class="dismiss" @click="pads.forgetMissing(missing.padId)">
+        Keep what the card has
+      </button>
+    </div>
+
     <AudioDropzone v-else-if="!selectedPad.audio" />
 
     <p v-else-if="isReading" class="notice">
@@ -410,6 +426,65 @@ function endDrag(event: PointerEvent): void {
 
 .notice.is-error {
   color: var(--status-danger);
+}
+
+.missing {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0.75rem;
+  padding: 1rem;
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--panel-surface);
+  border: 1px dashed var(--status-danger);
+  border-radius: var(--radius-lg);
+}
+
+.missing .headline {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--status-danger);
+}
+
+.missing .location {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.missing .hint {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.dismiss {
+  height: var(--control-height);
+  margin-top: 0.25rem;
+  padding: 0 0.75rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-default);
+  cursor: pointer;
+  background: var(--control-surface);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+}
+
+.dismiss:hover {
+  border-color: var(--text-subtle);
+}
+
+.dismiss:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .spinner {

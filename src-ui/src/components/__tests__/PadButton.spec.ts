@@ -96,6 +96,23 @@ describe('PadButton', () => {
     expect(wrapper.get('button').attributes('data-change')).toBe('replaced')
     expect(wrapper.get('button').attributes('aria-label')).toBe('Pad A1, sample replaced')
   })
+
+  it('says so when the project it came from can no longer find its source', async () => {
+    const pads = usePadsStore()
+    pads.applyProject({
+      pads: { ...pads.byId },
+      intents: { ...pads.intentById },
+      orphans: {
+        A1: { audio: { kind: 'path', path: '/gone/kick.wav' }, settings: padFor('A1').settings },
+      },
+      moved: [],
+      summary: { resolved: 0, moved: 0, missing: 1, keeping: 0 },
+    })
+    const wrapper = mount(PadButton, { props: { pad: padFor('A1') } })
+
+    expect(wrapper.get('button').attributes('data-state')).toBe('missing')
+    expect(wrapper.get('button').attributes('aria-label')).toBe('Pad A1, source missing')
+  })
 })
 
 describe('PadButton with several files', () => {
