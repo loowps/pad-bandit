@@ -4,6 +4,7 @@ import { createPinia } from 'pinia'
 import '@/assets/main.css'
 import App from '@/App.vue'
 import router from '@/router'
+import { blockBrowserMenu, blockBrowserShortcuts } from '@/composables/browserChrome'
 
 // Both match the pad sweep and fade authored in index.html.
 const padSweepDurationMs = 950
@@ -25,6 +26,11 @@ const dismissSplash = () => {
     splash.classList.add('is-done')
     setTimeout(() => splash.remove(), splashFadeMs)
   })
+}
+
+if (import.meta.env.PROD) {
+  document.addEventListener('contextmenu', blockBrowserMenu)
+  window.addEventListener('keydown', blockBrowserShortcuts, true)
 }
 
 const app = createApp(App)

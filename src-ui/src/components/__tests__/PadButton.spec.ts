@@ -105,8 +105,6 @@ describe('PadButton', () => {
       orphans: {
         A1: { audio: { kind: 'path', path: '/gone/kick.wav' }, settings: padFor('A1').settings },
       },
-      moved: [],
-      summary: { resolved: 0, moved: 0, missing: 1, keeping: 0 },
     })
     const wrapper = mount(PadButton, { props: { pad: padFor('A1') } })
 

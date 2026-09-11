@@ -2,12 +2,15 @@ use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 use crate::audio::decode::AudioSource;
 use crate::audio::resample::RateConverter;
 use crate::card::AUDIO_DATA_OFFSET;
 use crate::error::{Error, Result};
 
 pub const CARD_SAMPLE_RATE: u32 = 44_100;
+pub const UNTRIMMED_END: u64 = 0;
 pub const CARD_BITS_PER_SAMPLE: u16 = 16;
 const CARD_MAX_CHANNELS: u16 = 2;
 const RLND_CHUNK_SIZE: u32 = 458;
@@ -60,6 +63,35 @@ pub fn resampled_frames(frames: u64, from_rate: u32) -> u64 {
         return frames;
     }
     (frames as u128 * u128::from(CARD_SAMPLE_RATE) / u128::from(from_rate)) as u64
+}
+
+pub fn source_frames(card_frames: u64, source_rate: u32) -> u64 {
+    if source_rate == CARD_SAMPLE_RATE {
+        return card_frames;
+    }
+    (card_frames as u128 * u128::from(source_rate)).div_ceil(u128::from(CARD_SAMPLE_RATE)) as u64
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameRegion {
+    pub start_frame: u64,
+    pub end_frame: u64,
+}
+
+pub fn region_at_source(source: &Path, card_region: FrameRegion) -> Result<FrameRegion> {
+    let spec = AudioSource::open(source)?.spec();
+    let at_source = |frames: u64| {
+        let mapped = source_frames(frames, spec.sample_rate);
+        spec.frames.map_or(mapped, |total| mapped.min(total))
+    };
+    Ok(FrameRegion {
+        start_frame: at_source(card_region.start_frame),
+        end_frame: match card_region.end_frame {
+            UNTRIMMED_END => UNTRIMMED_END,
+            frames => at_source(frames),
+        },
+    })
 }
 
 pub fn encode_to_card(source: &Path, destination: &Path, slot: u8) -> Result<CardSample> {
@@ -387,5 +419,72 @@ mod tests {
                 "frame {frame} came back as {sample}"
             );
         }
+    }
+
+    #[test]
+    fn a_card_frame_maps_back_to_the_source_frame_that_produced_it() {
+        for rate in [22_050u32, 32_000, 44_100, 48_000, 96_000] {
+            for source in (0..200_000u64).step_by(997) {
+                let card = resampled_frames(source, rate);
+
+                assert_eq!(
+                    resampled_frames(source_frames(card, rate), rate),
+                    card,
+                    "{source} at {rate} Hz"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_trim_at_the_cards_rate_lands_on_the_same_moment_in_the_source() {
+        let dir = TempDir::new().expect("temp dir");
+        let source = dir.path().join("source.wav");
+        testing::write_silence_wav(&source, 48_000, 48_000, 2);
+
+        let region = region_at_source(
+            &source,
+            FrameRegion {
+                start_frame: 22_050,
+                end_frame: 33_075,
+            },
+        )
+        .expect("region");
+
+        assert_eq!(
+            region,
+            FrameRegion {
+                start_frame: 24_000,
+                end_frame: 36_000
+            }
+        );
+    }
+
+    #[test]
+    fn an_untrimmed_end_stays_untrimmed_and_no_frame_runs_past_the_source() {
+        let dir = TempDir::new().expect("temp dir");
+        let source = dir.path().join("source.wav");
+        testing::write_silence_wav(&source, 48_000, 1_000, 2);
+
+        let untrimmed = FrameRegion {
+            start_frame: 0,
+            end_frame: UNTRIMMED_END,
+        };
+        let past_the_end = FrameRegion {
+            start_frame: 5_000,
+            end_frame: 9_000,
+        };
+
+        assert_eq!(
+            region_at_source(&source, untrimmed).expect("region"),
+            untrimmed
+        );
+        assert_eq!(
+            region_at_source(&source, past_the_end).expect("region"),
+            FrameRegion {
+                start_frame: 1_000,
+                end_frame: 1_000
+            }
+        );
     }
 }

@@ -302,6 +302,19 @@ describe('running the sync', () => {
     expect(sync.report).toBeNull()
   })
 
+  it('opens the next time without the result of the last sync', async () => {
+    editedCard()
+    const sync = useSyncStore()
+    await sync.check()
+    await sync.run()
+    expect(sync.outcome).not.toBeNull()
+    sync.close()
+
+    sync.open()
+
+    expect(sync.outcome).toBeNull()
+  })
+
   it('refuses to run while pre-flight has an unresolved problem', async () => {
     editedCard()
     reply = { ...clean, problems: [{ kind: 'cardChanged' }] }

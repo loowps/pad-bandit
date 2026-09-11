@@ -21,6 +21,8 @@ const THEME_LIGHT: &str = "view.mode.light";
 const THEME_DARK: &str = "view.mode.dark";
 const THEME_SYSTEM: &str = "view.mode.system";
 const ABOUT: &str = "help.about";
+const QUIT: &str = "project.quit";
+const MAIN_WINDOW: &str = "main";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -48,6 +50,12 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<(
 }
 
 pub fn on_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
+    if event.id().as_ref() == QUIT {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+            let _ = window.close();
+        }
+        return;
+    }
     let recent = app.state::<AppState>().config().recent_projects;
     let Some(action) = action_of(event.id().as_ref(), &recent) else {
         return;
@@ -93,6 +101,9 @@ fn build<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<Menu<
     let save_as = MenuItemBuilder::with_id(SAVE_AS, "Save &As…")
         .accelerator("CmdOrCtrl+Shift+S")
         .build(app)?;
+    let quit = MenuItemBuilder::with_id(QUIT, "&Quit")
+        .accelerator("CmdOrCtrl+Q")
+        .build(app)?;
 
     let project = SubmenuBuilder::new(app, "&Project")
         .item(&new)
@@ -102,7 +113,7 @@ fn build<R: Runtime>(app: &AppHandle<R>, config: &Config) -> tauri::Result<Menu<
         .item(&save)
         .item(&save_as)
         .separator()
-        .quit()
+        .item(&quit)
         .build()?;
 
     let view = SubmenuBuilder::new(app, "&View")

@@ -311,8 +311,6 @@ describe('PadWaveform playhead dragging', () => {
           settings: { ...pads.padById('A1')!.settings, volume: 40 },
         },
       },
-      moved: [],
-      summary: { resolved: 0, moved: 0, missing: 1, keeping: 0 },
     })
     ui.selectPad('A1')
     const wrapper = mount(PadWaveform)
@@ -343,8 +341,6 @@ describe('PadWaveform playhead dragging', () => {
           settings: pads.byId['A1']!.settings,
         },
       },
-      moved: [],
-      summary: { resolved: 0, moved: 0, missing: 1, keeping: 0 },
     })
     ui.selectPad('A1')
     const wrapper = mount(PadWaveform)

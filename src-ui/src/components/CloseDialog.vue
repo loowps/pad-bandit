@@ -6,33 +6,33 @@ import { useDialog } from '@/composables/useDialog'
 const projects = useProjectsStore()
 const surface = ref<HTMLElement | null>(null)
 
-const label = computed(() => {
-  const recovered = projects.recoverable
-  if (!recovered) {
-    return ''
-  }
-  const what = recovered.name ? `“${recovered.name}”` : 'your unsaved work'
-  return `Pad Bandit closed unexpectedly. Restore ${what}?`
-})
+const headline = computed(() =>
+  projects.name
+    ? `“${projects.name}” has changes that are not saved or synced yet.`
+    : 'You have changes that are not saved in a project or synced to the card yet.',
+)
 
-useDialog(surface)
+useDialog(surface, () => void projects.stayOpen())
 </script>
 
 <template>
-  <div v-if="projects.recoverable" class="scrim">
+  <div v-if="projects.closeOffer" class="scrim">
     <section
       ref="surface"
-      class="recovery"
+      class="closing"
       role="alertdialog"
       aria-modal="true"
-      aria-label="Restore unsaved work"
+      aria-label="Close Pad Bandit"
     >
-      <p class="headline">{{ label }}</p>
+      <p class="headline">{{ headline }}</p>
       <footer>
-        <button type="button" class="action is-primary" @click="projects.restoreRecovered()">
-          Restore
+        <button type="button" class="action is-primary" @click="projects.saveAndClose()">
+          Save project
         </button>
-        <button type="button" class="action" @click="projects.discardRecovered()">Discard</button>
+        <button type="button" class="action" @click="projects.closeWithoutSaving()">
+          Close without saving
+        </button>
+        <button type="button" class="action" @click="projects.stayOpen()">Cancel</button>
       </footer>
     </section>
   </div>
@@ -48,12 +48,13 @@ useDialog(surface)
   background: var(--wave-shade);
 }
 
-.recovery {
+.closing {
   display: flex;
+  flex-direction: column;
   gap: 0.75rem;
-  align-items: center;
-  width: min(34rem, 92vw);
-  padding: 0.875rem 1rem;
+  width: min(30rem, 92vw);
+  padding: 1rem;
+  font-size: 0.8125rem;
   background: var(--panel-surface);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -61,15 +62,13 @@ useDialog(surface)
 }
 
 .headline {
-  flex: 1 1 auto;
   margin: 0;
-  font-size: 0.8125rem;
 }
 
 footer {
   display: flex;
-  flex: 0 0 auto;
   gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 .action {

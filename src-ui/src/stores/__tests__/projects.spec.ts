@@ -13,11 +13,18 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 let menuHandler: ((action: MenuAction) => void) | null = null
+let closeHandler: (() => void) | null = null
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn<
-    (event: string, handler: (event: { payload: MenuAction }) => void) => Promise<() => void>
-  >((_event, handler) => {
+    (event: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>
+  >((event, handler) => {
+    if (event === 'close-requested') {
+      closeHandler = () => handler({ payload: null })
+      return Promise.resolve(() => {
+        closeHandler = null
+      })
+    }
     menuHandler = (action) => handler({ payload: action })
     return Promise.resolve(() => {
       menuHandler = null
@@ -86,6 +93,7 @@ beforeEach(() => {
   title = 'Pad Bandit'
   missingOnDisk = []
   menuHandler = null
+  closeHandler = null
   invokeMock.mockReset()
   invokeMock.mockImplementation((command, args) => {
     const payload = args as {
@@ -94,8 +102,16 @@ beforeEach(() => {
       path?: string | null
       paths?: string[]
       title?: string
+      requests?: { path: string; region: { startFrame: number; endFrame: number } }[]
     }
     switch (command) {
+      case 'audio_regions_at_source':
+        return Promise.resolve(
+          payload.requests!.map(({ region }) => ({
+            startFrame: region.startFrame * 2,
+            endFrame: region.endFrame * 2,
+          })),
+        )
       case 'files_missing':
         return Promise.resolve(payload.paths!.filter((path) => missingOnDisk.includes(path)))
       case 'project_pick_to_save':
@@ -135,6 +151,10 @@ beforeEach(() => {
       case 'window_set_title':
         title = payload.title!
         return Promise.resolve(null)
+      case 'window_set_unsaved':
+      case 'window_keep_open':
+      case 'window_close':
+        return Promise.resolve(null)
       default:
         throw new Error(`unexpected command ${command}`)
     }
@@ -145,6 +165,26 @@ function loadedPads() {
   const pads = usePadsStore()
   pads.loadFromCard(cardState)
   return pads
+}
+
+function cardWith(files: Record<number, string>, sources: Record<number, string> = {}): CardState {
+  return {
+    ...cardState,
+    fingerprint: `fp-${Object.values(files).join('-')}`,
+    slots: Array.from({ length: PAD_COUNT }, (_unused, index) => {
+      const read = slot(index, files[index] ?? null)
+      const sourcePath = sources[index]
+      return read.sample && sourcePath ? { ...read, sample: { ...read.sample, sourcePath } } : read
+    }),
+  }
+}
+
+function syncKickOntoA3(pads: ReturnType<typeof usePadsStore>): void {
+  pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+  pads.adoptCard(
+    cardWith({ 0: 'A0000001.WAV', 2: 'A0000003.WAV' }, { 2: '/samples/kick.wav' }),
+    new Set([2]),
+  )
 }
 
 describe('projects store', () => {
@@ -381,6 +421,151 @@ describe('projects store', () => {
     expect(projects.title).toBe('Pad Bandit — march •')
 
     projects.stopJournal()
+  })
+
+  describe('a card that no longer matches the project', () => {
+    it('asks, then restores a synced pad from its file with the trim mapped to that file', async () => {
+      const pads = loadedPads()
+      syncKickOntoA3(pads)
+      const projects = useProjectsStore()
+      await projects.save()
+      expect(files[SET_PATH]?.slots[2]?.audio).toMatchObject({
+        kind: 'card',
+        sourcePath: '/samples/kick.wav',
+      })
+      pads.loadFromCard(cardWith({}))
+
+      const opening = projects.open(SET_PATH)
+      await vi.waitFor(() => expect(projects.restoreOffer).not.toBeNull())
+      expect(projects.restoreOffer).toEqual({
+        name: 'march',
+        divergence: { onCard: 0, fromDisk: 1, missing: 1, extra: 0 },
+      })
+      projects.answerRestore({ restore: true, clearExtras: false })
+
+      expect(await opening).toBe(true)
+      expect(projects.restoreOffer).toBeNull()
+      expect(pads.padById('A3')?.audio).toEqual(diskAudio('/samples/kick.wav'))
+      expect(pads.padById('A3')?.settings).toMatchObject({ startFrame: 0, endFrame: 2_000 })
+      expect(pads.changeFor('A3')?.status).toBe('added')
+      expect(pads.missingFor('A1')).not.toBeNull()
+      expect(
+        useNoticesStore().entries.find((entry) => entry.source === 'project:reopened'),
+      ).toMatchObject({ detail: expect.stringContaining('1 restored from disk') })
+    })
+
+    it('leaves the card as it is when the user keeps it', async () => {
+      const pads = loadedPads()
+      syncKickOntoA3(pads)
+      const projects = useProjectsStore()
+      await projects.save()
+      pads.loadFromCard(cardWith({}))
+
+      const opening = projects.open(SET_PATH)
+      await vi.waitFor(() => expect(projects.restoreOffer).not.toBeNull())
+      projects.answerRestore({ restore: false, clearExtras: false })
+
+      expect(await opening).toBe(true)
+      expect(pads.padById('A3')?.audio).toBeNull()
+      expect(pads.hasPreparedPads).toBe(false)
+      expect(invokeMock).not.toHaveBeenCalledWith('audio_regions_at_source', expect.anything())
+    })
+
+    it('asks nothing when the card still holds what the project saved', async () => {
+      const pads = loadedPads()
+      syncKickOntoA3(pads)
+      const projects = useProjectsStore()
+      await projects.save()
+
+      expect(await projects.open(SET_PATH)).toBe(true)
+
+      expect(projects.restoreOffer).toBeNull()
+      expect(pads.padById('A3')?.audio).toMatchObject({ sourcePath: '/samples/kick.wav' })
+      expect(projects.isDirty).toBe(false)
+    })
+  })
+
+  describe('what counts as unsaved', () => {
+    it('pending work is unsaved until a project holds it, and again once it changes', async () => {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
+      pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+      expect(projects.isDirty).toBe(true)
+
+      await projects.save()
+      expect(projects.isDirty).toBe(false)
+
+      pads.updateSettings('A3', { volume: 40 })
+      expect(projects.isDirty).toBe(true)
+    })
+
+    it('a sync that leaves nothing pending leaves nothing unsaved', () => {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
+
+      syncKickOntoA3(pads)
+
+      expect(projects.isDirty).toBe(false)
+    })
+
+    it('tells the window whether closing it should ask', async () => {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
+      projects.startJournal()
+
+      pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+      await vi.waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith('window_set_unsaved', { unsaved: true }),
+      )
+
+      projects.stopJournal()
+    })
+  })
+
+  describe('closing the window with unsaved work', () => {
+    async function askedToClose() {
+      const pads = loadedPads()
+      const projects = useProjectsStore()
+      await projects.listenToClose()
+      pads.assignAudio('A3', diskAudio('/samples/kick.wav'))
+      await projects.journalNow()
+      closeHandler!()
+      return projects
+    }
+
+    it('asks, and closing without saving lets the recovery file go', async () => {
+      const projects = await askedToClose()
+      expect(projects.closeOffer).toBe(true)
+      expect(journalled).not.toBeNull()
+
+      await projects.closeWithoutSaving()
+
+      expect(journalled).toBeNull()
+      expect(invokeMock).toHaveBeenCalledWith('window_close')
+      expect(projects.closeOffer).toBe(false)
+    })
+
+    it('saves the project first when asked to', async () => {
+      const projects = await askedToClose()
+
+      await projects.saveAndClose()
+
+      expect(files[SET_PATH]?.slots[2]).toMatchObject({ intent: 'sample' })
+      expect(invokeMock).toHaveBeenCalledWith('window_close')
+    })
+
+    it('stays open when saving is cancelled, and when the question is', async () => {
+      const projects = await askedToClose()
+      picked = null
+
+      await projects.saveAndClose()
+      closeHandler!()
+      await projects.stayOpen()
+
+      expect(invokeMock).not.toHaveBeenCalledWith('window_close')
+      expect(invokeMock).toHaveBeenCalledWith('window_keep_open')
+      expect(projects.closeOffer).toBe(false)
+    })
   })
 
   describe('menu actions', () => {

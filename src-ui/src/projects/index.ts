@@ -15,6 +15,7 @@ export interface ProjectCardRef {
   originSlot: number
   fileName: string
   fingerprint: string
+  sourcePath?: string
 }
 
 export type ProjectAudioRef = ProjectDiskRef | ProjectCardRef
@@ -100,6 +101,22 @@ export function clearJournal(): Promise<void> {
 
 export function setWindowTitle(title: string): Promise<void> {
   return invoke<void>('window_set_title', { title })
+}
+
+export function setWindowUnsaved(unsaved: boolean): Promise<void> {
+  return invoke<void>('window_set_unsaved', { unsaved })
+}
+
+export function keepWindowOpen(): Promise<void> {
+  return invoke<void>('window_keep_open')
+}
+
+export function closeWindow(): Promise<void> {
+  return invoke<void>('window_close')
+}
+
+export function onCloseRequested(handler: () => void): Promise<UnlistenFn> {
+  return listen('close-requested', () => handler())
 }
 
 export function onMenuAction(handler: (action: MenuAction) => void): Promise<UnlistenFn> {

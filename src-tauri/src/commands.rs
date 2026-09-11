@@ -5,9 +5,11 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::audio::cache;
 use crate::audio::decode::AudioSource;
+use crate::audio::encode::{self, FrameRegion};
 use crate::audio::peaks::{self, Peaks};
 use crate::audio::play::{PlayRequest, PlaybackEvents, Player};
 use crate::card::{CardPresence, CardState};
+use crate::closing::CloseGuard;
 use crate::config::{Config, Theme};
 use crate::error::Result;
 use crate::fs::Entry;
@@ -181,6 +183,24 @@ pub fn window_set_title(window: tauri::Window, title: String) -> Result<()> {
         .map_err(|error| crate::Error::Window(error.to_string()))
 }
 
+#[tauri::command]
+pub fn window_set_unsaved(guard: State<'_, CloseGuard>, unsaved: bool) {
+    guard.set_unsaved(unsaved);
+}
+
+#[tauri::command]
+pub fn window_keep_open(guard: State<'_, CloseGuard>) {
+    guard.keep_open();
+}
+
+#[tauri::command]
+pub fn window_close(window: tauri::Window, guard: State<'_, CloseGuard>) -> Result<()> {
+    guard.let_go();
+    window
+        .close()
+        .map_err(|error| crate::Error::Window(error.to_string()))
+}
+
 enum Purpose {
     Open,
     Save,
@@ -264,6 +284,30 @@ pub fn audio_undecodable(state: State<'_, AppState>, paths: Vec<PathBuf>) -> Vec
                 path,
                 reason: refused.to_string(),
             })
+        })
+        .collect()
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardRegionOfSource {
+    pub path: PathBuf,
+    pub region: FrameRegion,
+}
+
+#[tauri::command(async)]
+pub fn audio_regions_at_source(
+    state: State<'_, AppState>,
+    requests: Vec<CardRegionOfSource>,
+) -> Vec<Option<FrameRegion>> {
+    let scopes = state.scopes();
+    requests
+        .into_iter()
+        .map(|request| {
+            scopes
+                .readable(&request.path)
+                .and_then(|resolved| encode::region_at_source(&resolved, request.region))
+                .ok()
         })
         .collect()
 }

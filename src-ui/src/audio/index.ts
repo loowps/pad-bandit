@@ -28,6 +28,20 @@ export function findUndecodable(paths: string[]): Promise<UndecodableFile[]> {
   return invoke<UndecodableFile[]>('audio_undecodable', { paths })
 }
 
+export interface FrameRegion {
+  startFrame: number
+  endFrame: number
+}
+
+export interface CardRegionOfSource {
+  path: string
+  region: FrameRegion
+}
+
+export function regionsAtSource(requests: CardRegionOfSource[]): Promise<(FrameRegion | null)[]> {
+  return invoke<(FrameRegion | null)[]>('audio_regions_at_source', { requests })
+}
+
 export function onExactPeaks(handler: (payload: ExactPeaks) => void): Promise<UnlistenFn> {
   return listen<ExactPeaks>('peaks:exact', (event) => handler(event.payload))
 }

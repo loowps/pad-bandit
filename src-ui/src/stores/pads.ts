@@ -283,7 +283,7 @@ export const usePadsStore = defineStore('pads', () => {
     adoptSnapshot()
   }
 
-  function adoptSync(state: CardState, rewritten: ReadonlySet<number>): void {
+  function adoptCard(state: CardState, rewritten: ReadonlySet<number>): void {
     const untouched = allPads.value.filter(
       (pad) =>
         !rewritten.has(pad.slot) &&
@@ -361,7 +361,7 @@ export const usePadsStore = defineStore('pads', () => {
     forgetFill()
   }
 
-  function applyProject(resolution: ProjectResolution): void {
+  function applyProject(resolution: Pick<ProjectResolution, 'pads' | 'intents' | 'orphans'>): void {
     byId.value = resolution.pads
     intentById.value = resolution.intents
     missingById.value = { ...resolution.orphans }
@@ -398,7 +398,7 @@ export const usePadsStore = defineStore('pads', () => {
     revertPad,
     discardChanges,
     loadFromCard,
-    adoptSync,
+    adoptCard,
     applyProject,
     swapPads,
     swapBanks,

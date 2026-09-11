@@ -157,6 +157,76 @@ test('a saved sample that has moved reopens as missing and can be re-linked', as
   await expect(page.getByText('1 saved pad lost its source')).toBeHidden()
 })
 
+test('a project whose samples left the card offers to restore them from disk', async ({ page }) => {
+  const settings = {
+    volume: 127,
+    lofi: false,
+    loop: false,
+    gate: true,
+    reverse: false,
+    tempoMode: 'off',
+    originalTempo: 119.9,
+    userTempo: 119.9,
+  }
+  const edit = { settings, startFrame: 0, endFrame: 44100 }
+  await stubBackend(page, {
+    pickedFolder: '/samples',
+    entries: samples,
+    card: cardWithFilledSlots('/samples', 3),
+    projects: {
+      [STUB_PROJECT_PATH]: {
+        name: 'march',
+        savedAt: 1,
+        cardRoot: '/samples',
+        slots: [
+          {
+            slot: 0,
+            intent: 'keep',
+            audio: {
+              kind: 'card',
+              originSlot: 0,
+              fileName: 'A0000001.WAV',
+              fingerprint: 'fp-overwritten-since',
+              sourcePath: '/samples/kick.wav',
+            },
+            edit,
+          },
+          { slot: 1, intent: 'keep', audio: null, edit: { ...edit, endFrame: 0 } },
+          {
+            slot: 2,
+            intent: 'keep',
+            audio: {
+              kind: 'card',
+              originSlot: 2,
+              fileName: 'sample2.wav',
+              fingerprint: 'size:176912 head:2 tail:2',
+            },
+            edit,
+          },
+        ],
+      },
+    },
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Choose card folder…' }).click()
+  await expect(page.getByText('Card folder recognised')).toBeVisible()
+
+  await chooseFromMenu(page, { kind: 'openRecent', path: STUB_PROJECT_PATH })
+
+  const dialog = page.getByRole('alertdialog', { name: 'Restore from project' })
+  await expect(dialog).toContainText("The card doesn't match “march” on 2 pads.")
+  await expect(dialog).toContainText('1 pad from the original file on your computer')
+  await dialog.getByLabel('Also clear 1 pad that is empty in the project').check()
+  await dialog.getByRole('button', { name: 'Restore from project' }).click()
+
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Pad A1, sample replaced' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pad A2, sample removed' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pad A3', exact: true })).toBeVisible()
+  const commands = (await backendCalls(page)).map((call) => call.command)
+  expect(commands).toContain('audio_regions_at_source')
+})
+
 test('starting a new project from the menu drops the pending work', async ({ page }) => {
   await page.getByRole('button', { name: 'Choose card folder…' }).click()
   await expect(page.getByText('Card folder recognised')).toBeVisible()

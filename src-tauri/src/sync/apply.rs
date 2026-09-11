@@ -19,7 +19,6 @@ use crate::sync::{PlannedAction, PlannedSlot, SyncPlan};
 
 const BACKUPS_DIRECTORY: &str = "card-backups";
 const TEMPORARY_SUFFIX: &str = "padbandit-tmp";
-const UNTRIMMED_END: u64 = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -274,7 +273,7 @@ fn write_sample(
 
 fn edit_at_card_rate(edit: &PadEdit, written: &encode::CardSample) -> PadEdit {
     let end_frame = match edit.end_frame {
-        UNTRIMMED_END => written.frames,
+        encode::UNTRIMMED_END => written.frames,
         frames => encode::resampled_frames(frames, written.source_rate),
     };
     PadEdit {

@@ -24,6 +24,8 @@ pub enum AudioRef {
         origin_slot: u8,
         file_name: String,
         fingerprint: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_path: Option<PathBuf>,
     },
 }
 
@@ -58,8 +60,13 @@ impl Project {
     fn with_simplified_paths(mut self) -> Self {
         self.card_root = self.card_root.as_deref().map(simplified);
         for slot in &mut self.slots {
-            if let Some(AudioRef::Disk { path }) = &mut slot.audio {
-                *path = simplified(path);
+            match &mut slot.audio {
+                Some(AudioRef::Disk { path })
+                | Some(AudioRef::Card {
+                    source_path: Some(path),
+                    ..
+                }) => *path = simplified(path),
+                _ => {}
             }
         }
         self
@@ -279,6 +286,7 @@ mod tests {
                         origin_slot: 26,
                         file_name: "C0000003.WAV".to_owned(),
                         fingerprint: "size:512 head:aa tail:bb".to_owned(),
+                        source_path: Some(PathBuf::from("/samples/kick.wav")),
                     }),
                     edit: edit(),
                 },
@@ -330,6 +338,29 @@ mod tests {
         assert_eq!(reopened, saved);
         assert_eq!(reopened.project.slots, project().slots);
         assert!(reopened.project.saved_at > 0);
+    }
+
+    #[test]
+    fn a_card_sample_saved_before_sources_were_remembered_still_opens() {
+        let f = fixture();
+        let path = f.file("older");
+        let mut stored = serde_json::to_value(project()).expect("serialise");
+        let card_ref = &mut stored["slots"][0]["audio"];
+        card_ref
+            .as_object_mut()
+            .expect("card ref")
+            .remove("sourcePath");
+        std::fs::write(&path, stored.to_string()).expect("write");
+
+        let reopened = f.store.open(&path).expect("open").project;
+
+        assert!(matches!(
+            reopened.slots[0].audio,
+            Some(AudioRef::Card {
+                source_path: None,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -444,6 +475,12 @@ mod tests {
         old.slots[1].audio = Some(AudioRef::Disk {
             path: PathBuf::from(r"\\?\D:\samples\kick.wav"),
         });
+        old.slots[0].audio = Some(AudioRef::Card {
+            origin_slot: 26,
+            file_name: "C0000003.WAV".to_owned(),
+            fingerprint: String::new(),
+            source_path: Some(PathBuf::from(r"\\?\D:\samples\snare.wav")),
+        });
         std::fs::write(&path, serde_json::to_vec(&old).expect("serialise")).expect("write");
         f.store
             .write_journal(&Journal {
@@ -460,6 +497,10 @@ mod tests {
         });
         assert_eq!(reopened.card_root, Some(PathBuf::from(r"E:\")));
         assert_eq!(reopened.slots[1].audio, plain_kick);
+        assert!(matches!(
+            &reopened.slots[0].audio,
+            Some(AudioRef::Card { source_path: Some(path), .. }) if path == Path::new(r"D:\samples\snare.wav")
+        ));
         assert_eq!(
             recovered.path,
             Some(PathBuf::from(r"D:\sets\old.padbandit"))

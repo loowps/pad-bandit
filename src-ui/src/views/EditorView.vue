@@ -3,6 +3,7 @@ import AboutDialog from '@/components/AboutDialog.vue'
 import AppToolbar from '@/components/AppToolbar.vue'
 import BankGrid from '@/components/BankGrid.vue'
 import BottomBar from '@/components/BottomBar.vue'
+import CloseDialog from '@/components/CloseDialog.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 import FileBrowser from '@/components/FileBrowser.vue'
 import NoticeToasts from '@/components/NoticeToasts.vue'
@@ -10,10 +11,12 @@ import PaneDivider from '@/components/PaneDivider.vue'
 import PadParameters from '@/components/PadParameters.vue'
 import PadWaveform from '@/components/PadWaveform.vue'
 import RecoveryDialog from '@/components/RecoveryDialog.vue'
+import RestoreDialog from '@/components/RestoreDialog.vue'
 import PadFillPrompt from '@/components/PadFillPrompt.vue'
 import SyncPreview from '@/components/SyncPreview.vue'
 import { onMounted, onUnmounted } from 'vue'
 import { aDialogIsOpen } from '@/composables/useDialog'
+import { usePlaybackShortcut } from '@/composables/usePlaybackShortcut'
 import { useAboutStore } from '@/stores/about'
 import { useCardStore } from '@/stores/card'
 import { useFileBrowserStore } from '@/stores/fileBrowser'
@@ -33,6 +36,8 @@ const projects = useProjectsStore()
 const theme = useThemeStore()
 const about = useAboutStore()
 
+usePlaybackShortcut()
+
 onMounted(async () => {
   await Promise.all([
     theme.restore(),
@@ -41,7 +46,12 @@ onMounted(async () => {
     browser.restore(),
     card.restore(),
   ])
-  await Promise.all([projects.refresh(), projects.offerRecovery(), projects.listenToMenu()])
+  await Promise.all([
+    projects.refresh(),
+    projects.offerRecovery(),
+    projects.listenToMenu(),
+    projects.listenToClose(),
+  ])
   projects.startJournal()
   card.watchPresence()
 })
@@ -82,6 +92,8 @@ onUnmounted(() => {
   <SyncPreview />
   <PadFillPrompt />
   <RecoveryDialog />
+  <RestoreDialog />
+  <CloseDialog />
   <AboutDialog />
 </template>
 

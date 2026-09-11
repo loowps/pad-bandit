@@ -45,6 +45,13 @@ export function syncPlan(
 
 export function previewRows(changes: PadChange[], pads: Record<PadId, Pad>): PreviewRow[] {
   const rows: PreviewRow[] = []
+  const movedTo = new Map<number, number>()
+  for (const change of changes) {
+    const action = plannedAction(change)
+    if (action?.kind === 'move') {
+      movedTo.set(action.fromSlot, change.slot)
+    }
+  }
 
   for (const change of changes) {
     const action = plannedAction(change)
@@ -52,11 +59,13 @@ export function previewRows(changes: PadChange[], pads: Record<PadId, Pad>): Pre
     if (!action || !pad) {
       continue
     }
+    const destination = action.kind === 'delete' ? movedTo.get(change.slot) : undefined
     rows.push({
       padId: change.padId,
       slot: change.slot,
-      headline: headlineOf(action),
-      detail: detailOf(change, action),
+      headline: destination === undefined ? headlineOf(action) : 'moved away',
+      detail:
+        destination === undefined ? detailOf(change, action) : `to ${padIdForSlot(destination)}`,
       action,
     })
   }

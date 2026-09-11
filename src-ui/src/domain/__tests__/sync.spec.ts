@@ -196,6 +196,21 @@ describe('the preview rows', () => {
     ])
   })
 
+  it('says a pad whose sample moves away is moved, not deleted', () => {
+    const changes = [
+      change({ padId: 'C1', slot: 24, status: 'moved', fromSlot: 13 }),
+      change({ padId: 'B2', slot: 13, status: 'removed', previousFileName: 'B0000002.WAV' }),
+    ]
+
+    const rows = previewRows(changes, pads())
+
+    expect(rows.map((row) => [row.padId, row.headline, row.detail])).toEqual([
+      ['C1', 'move', 'from B2'],
+      ['B2', 'moved away', 'to C1'],
+    ])
+    expect(rows[1]!.action).toEqual({ kind: 'delete' })
+  })
+
   it('names the source file rather than its whole path', () => {
     const changes = [
       change({
