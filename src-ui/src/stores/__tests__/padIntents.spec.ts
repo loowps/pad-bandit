@@ -97,6 +97,15 @@ describe('per-slot intent', () => {
     expect(pads.changeFor('A1')?.status).toBe('replaced')
   })
 
+  it('starts a dropped sample untrimmed instead of inheriting the old region', () => {
+    const pads = loadedPads()
+    pads.updateSettings('A1', { volume: 64, startFrame: 200, endFrame: 600 })
+
+    pads.assignAudio('A1', diskAudio('/samples/snare.wav'))
+
+    expect(pads.padById('A1')?.settings).toMatchObject({ volume: 64, startFrame: 0, endFrame: 0 })
+  })
+
   it('reports a pad-to-pad drag as a move on both sides', () => {
     const pads = loadedPads()
 

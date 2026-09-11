@@ -15,6 +15,7 @@ const COPY: Record<string, string> = {
   noCardSelected: 'No card folder is selected.',
   cardChanged: 'The card changed since it was read. Read it again.',
   unpairedMove: 'Both pads of a swap have to be synced together.',
+  preflightFailed: 'The plan no longer passes its checks. Re-check to see what changed.',
   syncInProgress: 'A sync is already running.',
   unknownFolder: 'That folder is no longer in the list.',
   unnamedProject: 'A project needs a name.',

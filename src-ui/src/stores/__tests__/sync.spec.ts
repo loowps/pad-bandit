@@ -178,6 +178,41 @@ describe('sync store', () => {
     expect(sync.selected).toHaveLength(2)
   })
 
+  it('checks the plan again whenever the selection changes and holds Sync until it has', async () => {
+    editedCard()
+    const sync = useSyncStore()
+    sync.toggle('A3')
+    await sync.check()
+    expect(sync.canSync).toBe(true)
+
+    sync.selectAll()
+
+    expect(sync.canSync).toBe(false)
+    await vi.waitFor(() => expect(sync.canSync).toBe(true))
+    expect(sent?.slots.map((planned) => planned.slot)).toEqual([2, 3])
+  })
+
+  it('ignores a check that answers after a newer one', async () => {
+    editedCard()
+    const answers: Array<(reply: Preflight) => void> = []
+    invokeMock.mockImplementation((command) => {
+      if (command === 'sync_preflight') {
+        return new Promise((resolve) => answers.push(resolve))
+      }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const sync = useSyncStore()
+
+    const older = sync.check()
+    sync.toggle('A3')
+    answers[1]?.(clean)
+    answers[0]?.({ ...clean, problems: [{ kind: 'cardChanged' }] })
+    await older
+
+    await vi.waitFor(() => expect(sync.checking).toBe(false))
+    expect(sync.report?.problems).toEqual([])
+  })
+
   it('sends the fingerprint the card was read with', async () => {
     editedCard()
     const sync = useSyncStore()

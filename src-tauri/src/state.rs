@@ -74,6 +74,12 @@ impl AppState {
         if crate::sync::card_fingerprint(&loaded) != plan.card_fingerprint {
             return Err(Error::CardChanged);
         }
+        let checked = checked_plan(&scopes, &loaded, &card_path, plan)?;
+        if !checked.ok() {
+            return Err(Error::PreflightFailed {
+                problems: checked.problems.len(),
+            });
+        }
 
         let outcome = {
             let mut context = crate::sync::apply::Apply {
@@ -258,13 +264,7 @@ impl AppState {
     pub fn preflight(&self, plan: &SyncPlan) -> Result<Preflight> {
         let (scopes, card_path) = self.card_scope()?;
         let loaded = crate::card::read_card(&scopes, &card_path)?;
-        let free = crate::sync::free_space(&card_path)?;
-        Ok(crate::sync::preflight(
-            &scopes,
-            &loaded,
-            plan,
-            &crate::sync::Budget::on(free),
-        ))
+        checked_plan(&scopes, &loaded, &card_path, plan)
     }
 
     pub fn scopes(&self) -> Scopes {
@@ -305,6 +305,21 @@ impl AppState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+fn checked_plan(
+    scopes: &Scopes,
+    loaded: &crate::card::LoadedCard,
+    card_path: &Path,
+    plan: &SyncPlan,
+) -> Result<Preflight> {
+    let free = crate::sync::free_space(card_path)?;
+    Ok(crate::sync::preflight(
+        scopes,
+        loaded,
+        plan,
+        &crate::sync::Budget::on(free),
+    ))
 }
 
 #[cfg(test)]
@@ -498,6 +513,31 @@ mod tests {
         let busy = Error::SyncInProgress.to_string();
         assert_eq!(refusals, Some((busy.clone(), busy)));
         assert!(f.state.config().card_path.is_some());
+    }
+
+    #[test]
+    fn a_plan_that_fails_pre_flight_is_refused_before_the_card_is_touched() {
+        let (f, mut plan) = card_under_sync();
+        f.state.add_browse_folder(&f.browse).expect("add folder");
+        let samples = crate::card::sample_directory(&f.card);
+        let pad_info_before =
+            std::fs::read(samples.join(crate::card::PAD_INFO_FILE_NAME)).expect("pad info");
+        plan.slots.push(crate::sync::PlannedSlot {
+            slot: 5,
+            action: crate::sync::PlannedAction::Write {
+                source: f.browse.join("never-checked.wav"),
+            },
+            edit: plan.slots[0].edit,
+        });
+
+        let refusal = f.state.apply_plan(&plan, &mut |_| {}).unwrap_err();
+
+        assert!(matches!(refusal, Error::PreflightFailed { problems: 1 }));
+        assert_eq!(
+            std::fs::read(samples.join(crate::card::PAD_INFO_FILE_NAME)).expect("pad info"),
+            pad_info_before
+        );
+        assert!(!f._root.path().join("data").join("card-backups").exists());
     }
 
     #[test]

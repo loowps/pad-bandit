@@ -47,7 +47,7 @@ export interface Preflight {
   freeSpace: number
 }
 
-export type SyncPhase = 'moving' | 'deleting' | 'converting' | 'recording' | 'verifying'
+export type SyncPhase = 'moving' | 'deleting' | 'converting' | 'verifying'
 
 export interface SyncProgress {
   slot: number | null

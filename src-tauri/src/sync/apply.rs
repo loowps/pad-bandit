@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::fs::File;
+use std::io::{Seek, SeekFrom, Write};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,8 +10,8 @@ use serde::Serialize;
 
 use crate::audio::encode;
 use crate::card::{
-    self, LoadedCard, PAD_COUNT, PAD_INFO_FILE_NAME, PadEdit, PadRecord, emptied_record,
-    recorded_record, sample_file_name,
+    self, BYTES_PER_PAD, LoadedCard, PAD_COUNT, PAD_INFO_FILE_NAME, PadEdit, PadRecord,
+    emptied_record, recorded_record, sample_file_name,
 };
 use crate::error::{Error, Result};
 use crate::paths::Scopes;
@@ -17,6 +19,7 @@ use crate::sync::{PlannedAction, PlannedSlot, SyncPlan};
 
 const BACKUPS_DIRECTORY: &str = "card-backups";
 const TEMPORARY_SUFFIX: &str = "padbandit-tmp";
+const UNTRIMMED_END: u64 = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +27,6 @@ pub enum Phase {
     Moving,
     Deleting,
     Converting,
-    Recording,
     Verifying,
 }
 
@@ -103,7 +105,7 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
 
     back_up_pad_info(context.card, context.app_data)?;
     remove_disposable_leftovers(&samples);
-    let pad_info = ReservedPadInfo::reserve(context.scopes, context.card, &samples)?;
+    let mut table = PadTable::open(context.scopes, context.card, &samples)?;
 
     let bytes_total: u64 = plan
         .slots
@@ -123,7 +125,6 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
         cancelled: false,
         verified: false,
     };
-    let mut records: BTreeMap<u8, PadRecord> = BTreeMap::new();
     let mut state = Walk {
         slots_total: plan.slots.len(),
         slots_done: 0,
@@ -136,17 +137,14 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
         .iter()
         .partition(|planned| matches!(planned.action, PlannedAction::Move { .. }));
 
-    if let Err(error) = rename_moved_samples(
+    rename_moved_samples(
         context,
         &samples,
         &moves,
-        &mut records,
+        &mut table,
         &mut state,
         &mut outcome,
-    ) {
-        pad_info.release();
-        return Err(error);
-    }
+    )?;
 
     for planned in rest {
         if cancelled(&context.cancel) {
@@ -160,10 +158,10 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
         }
 
         let done = match &planned.action {
-            PlannedAction::Settings => settings_only(context.card, planned, &mut records),
-            PlannedAction::Delete => delete_sample(&samples, planned, context.card, &mut records),
+            PlannedAction::Settings => settings_only(context.card, planned, &mut table),
+            PlannedAction::Delete => delete_sample(&samples, planned, context.card, &mut table),
             PlannedAction::Write { source } => {
-                write_sample(context, &samples, planned, source, &mut records, &mut state)
+                write_sample(context, &samples, planned, source, &mut table, &mut state)
             }
             PlannedAction::Move { .. } => Ok(()),
         };
@@ -179,11 +177,8 @@ pub fn apply_plan(context: &mut Apply<'_>, plan: &SyncPlan) -> Result<SyncOutcom
         (context.report)(state.at(Some(planned.slot), Phase::Converting));
     }
 
-    (context.report)(state.at(None, Phase::Recording));
-    pad_info.commit(context.card, &records)?;
-
     (context.report)(state.at(None, Phase::Verifying));
-    outcome.verified = verify(context.scopes, &card_root, &records)?;
+    outcome.verified = verify(context.scopes, &card_root, &table)?;
 
     Ok(outcome)
 }
@@ -208,30 +203,25 @@ impl Walk {
     }
 }
 
-fn settings_only(
-    card: &LoadedCard,
-    planned: &PlannedSlot,
-    records: &mut BTreeMap<u8, PadRecord>,
-) -> Result<()> {
+fn settings_only(card: &LoadedCard, planned: &PlannedSlot, table: &mut PadTable) -> Result<()> {
     let base = record_at(card, planned.slot)?;
-    records.insert(planned.slot, card::edited_record(&base, &planned.edit));
-    Ok(())
+    table.write(planned.slot, card::edited_record(&base, &planned.edit))
 }
 
 fn delete_sample(
     samples: &Path,
     planned: &PlannedSlot,
     card: &LoadedCard,
-    records: &mut BTreeMap<u8, PadRecord>,
+    table: &mut PadTable,
 ) -> Result<()> {
+    let base = record_at(card, planned.slot)?;
+    table.write(planned.slot, emptied_record(&base))?;
     for name in sample_names(card, planned.slot) {
         let path = samples.join(&name);
         if path.is_file() {
             std::fs::remove_file(&path)?;
         }
     }
-    let base = record_at(card, planned.slot)?;
-    records.insert(planned.slot, emptied_record(&base));
     Ok(())
 }
 
@@ -240,11 +230,12 @@ fn write_sample(
     samples: &Path,
     planned: &PlannedSlot,
     source: &Path,
-    records: &mut BTreeMap<u8, PadRecord>,
+    table: &mut PadTable,
     state: &mut Walk,
 ) -> Result<()> {
     let readable = context.scopes.readable(source)?;
-    let destination = samples.join(sample_file_name(planned.slot));
+    let destination_name = sample_file_name(planned.slot);
+    let destination = samples.join(&destination_name);
     let temporary = destination.with_extension(TEMPORARY_SUFFIX);
     context.scopes.writable(&destination)?;
 
@@ -257,31 +248,38 @@ fn write_sample(
             return Err(error);
         }
     };
-
-    for name in sample_names(context.card, planned.slot) {
-        let existing = samples.join(&name);
-        if existing != destination && existing.is_file() {
-            std::fs::remove_file(&existing)?;
-        }
+    if let Err(error) = std::fs::rename(&temporary, &destination) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error.into());
     }
-    std::fs::rename(&temporary, &destination)?;
 
     state.bytes_done += written.bytes;
-    records.insert(
+    table.write(
         planned.slot,
         recorded_record(
             written.channels as u8,
             written.bytes,
-            &edit_at_card_rate(&planned.edit, written.source_rate),
+            &edit_at_card_rate(&planned.edit, &written),
         ),
-    );
+    )?;
+
+    for name in sample_names(context.card, planned.slot) {
+        let stale = samples.join(&name);
+        if !name.eq_ignore_ascii_case(&destination_name) && stale.is_file() {
+            std::fs::remove_file(&stale)?;
+        }
+    }
     Ok(())
 }
 
-fn edit_at_card_rate(edit: &PadEdit, source_rate: u32) -> PadEdit {
+fn edit_at_card_rate(edit: &PadEdit, written: &encode::CardSample) -> PadEdit {
+    let end_frame = match edit.end_frame {
+        UNTRIMMED_END => written.frames,
+        frames => encode::resampled_frames(frames, written.source_rate),
+    };
     PadEdit {
-        start_frame: encode::resampled_frames(edit.start_frame, source_rate),
-        end_frame: encode::resampled_frames(edit.end_frame, source_rate),
+        start_frame: encode::resampled_frames(edit.start_frame, written.source_rate),
+        end_frame,
         ..*edit
     }
 }
@@ -290,7 +288,7 @@ fn rename_moved_samples(
     context: &mut Apply<'_>,
     samples: &Path,
     moves: &[&PlannedSlot],
-    records: &mut BTreeMap<u8, PadRecord>,
+    table: &mut PadTable,
     state: &mut Walk,
     outcome: &mut SyncOutcome,
 ) -> Result<()> {
@@ -300,17 +298,23 @@ fn rename_moved_samples(
     (context.report)(state.at(None, Phase::Moving));
 
     let mut shuffle = Shuffle::default();
-    match shuffle.run(context, samples, moves, records, state, outcome) {
-        Ok(()) => {
-            shuffle.finish();
-            (context.report)(state.at(None, Phase::Deleting));
-            Ok(())
-        }
-        Err(error) => {
-            shuffle.roll_back();
-            Err(error)
-        }
+    let mut records = BTreeMap::new();
+    if let Err(error) = shuffle.run(context, samples, moves, &mut records, state, outcome) {
+        shuffle.roll_back();
+        return Err(error);
     }
+    if let Err(error) = records
+        .iter()
+        .try_for_each(|(&slot, &record)| table.write(slot, record))
+    {
+        table.restore(context.card, records.keys().copied());
+        shuffle.roll_back();
+        return Err(error);
+    }
+
+    shuffle.finish();
+    (context.report)(state.at(None, Phase::Deleting));
+    Ok(())
 }
 
 struct Parked {
@@ -475,38 +479,50 @@ impl Shuffle {
     }
 }
 
-struct ReservedPadInfo {
-    path: PathBuf,
-    temporary: PathBuf,
+struct PadTable {
+    file: File,
+    expected: Vec<u8>,
+    written: BTreeMap<u8, PadRecord>,
 }
 
-impl ReservedPadInfo {
-    fn reserve(scopes: &Scopes, card: &LoadedCard, samples: &Path) -> Result<Self> {
+impl PadTable {
+    fn open(scopes: &Scopes, card: &LoadedCard, samples: &Path) -> Result<Self> {
         let path = scopes.writable(&samples.join(PAD_INFO_FILE_NAME))?;
-        let temporary = path.with_extension(TEMPORARY_SUFFIX);
-        if let Err(error) = write_to_disk(&temporary, card.pad_info_raw()) {
-            let _ = std::fs::remove_file(&temporary);
-            return Err(error);
-        }
-        Ok(Self { path, temporary })
+        let file = std::fs::OpenOptions::new().write(true).open(path)?;
+        Ok(Self {
+            file,
+            expected: card.pad_info_raw().to_vec(),
+            written: BTreeMap::new(),
+        })
     }
 
-    fn commit(self, card: &LoadedCard, records: &BTreeMap<u8, PadRecord>) -> Result<()> {
-        let patched = card::patch_pad_records(card.pad_info_raw(), records)?;
-        {
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .open(&self.temporary)?;
-            file.write_all(&patched)?;
-            file.sync_all()?;
-        }
-        std::fs::rename(&self.temporary, &self.path)?;
+    fn write(&mut self, slot: u8, record: PadRecord) -> Result<()> {
+        let patched = card::patch_pad_records(&self.expected, &BTreeMap::from([(slot, record)]))?;
+        let range = record_range(slot);
+        self.put(range.start, &patched[range])?;
+        self.expected = patched;
+        self.written.insert(slot, record);
         Ok(())
     }
 
-    fn release(self) {
-        let _ = std::fs::remove_file(&self.temporary);
+    fn restore(&mut self, card: &LoadedCard, slots: impl Iterator<Item = u8>) {
+        for slot in slots {
+            let range = record_range(slot);
+            let _ = self.put(range.start, &card.pad_info_raw()[range]);
+        }
     }
+
+    fn put(&mut self, offset: usize, bytes: &[u8]) -> Result<()> {
+        self.file.seek(SeekFrom::Start(offset as u64))?;
+        self.file.write_all(bytes)?;
+        self.file.sync_all()?;
+        Ok(())
+    }
+}
+
+fn record_range(slot: u8) -> Range<usize> {
+    let start = usize::from(slot) * BYTES_PER_PAD;
+    start..start + BYTES_PER_PAD
 }
 
 fn remove_disposable_leftovers(samples: &Path) {
@@ -515,20 +531,13 @@ fn remove_disposable_leftovers(samples: &Path) {
     };
     for entry in entries.filter_map(|entry| entry.ok()) {
         let path = entry.path();
-        if is_disposable_leftover(samples, &path) {
+        if is_disposable_leftover(&path) {
             let _ = std::fs::remove_file(&path);
         }
     }
 }
 
-fn is_disposable_leftover(samples: &Path, path: &Path) -> bool {
-    if path
-        == samples
-            .join(PAD_INFO_FILE_NAME)
-            .with_extension(TEMPORARY_SUFFIX)
-    {
-        return true;
-    }
+fn is_disposable_leftover(path: &Path) -> bool {
     let is_temporary = path.extension().is_some_and(|it| it == TEMPORARY_SUFFIX);
     let converted_for_a_pad = path
         .file_stem()
@@ -538,18 +547,15 @@ fn is_disposable_leftover(samples: &Path, path: &Path) -> bool {
     is_temporary && converted_for_a_pad
 }
 
-fn write_to_disk(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut file = std::fs::File::create(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    Ok(())
-}
-
-fn verify(scopes: &Scopes, card_root: &Path, records: &BTreeMap<u8, PadRecord>) -> Result<bool> {
+fn verify(scopes: &Scopes, card_root: &Path, table: &PadTable) -> Result<bool> {
     let reread = card::read_card(scopes, card_root)?;
-    Ok(records
-        .iter()
-        .all(|(&slot, record)| reread.records()[usize::from(slot)] == *record))
+    let slots = reread.state().slots;
+    let table_is_as_written = reread.pad_info_raw() == table.expected.as_slice();
+    let files_agree_with_records = table.written.iter().all(|(&slot, record)| {
+        let holds_audio = record.original_end > record.original_start;
+        slots[usize::from(slot)].sample.is_some() == holds_audio
+    });
+    Ok(table_is_as_written && files_agree_with_records)
 }
 
 fn back_up_pad_info(card: &LoadedCard, app_data: &Path) -> Result<()> {
@@ -698,20 +704,38 @@ mod tests {
             plan: &SyncPlan,
             cancel: Option<Arc<AtomicBool>>,
         ) -> (Result<SyncOutcome>, Vec<Progress>) {
-            let card = self.card();
             let mut seen: Vec<Progress> = Vec::new();
-            let outcome = {
-                let mut report = |progress: Progress| seen.push(progress);
-                let mut context = Apply {
-                    scopes: &self.scopes,
-                    card: &card,
-                    app_data: &self.app_data,
-                    cancel,
-                    report: &mut report,
-                };
-                apply_plan(&mut context, plan)
-            };
+            let outcome = self.apply(&self.card(), plan, cancel, &mut |progress| {
+                seen.push(progress)
+            });
             (outcome, seen)
+        }
+
+        fn apply(
+            &self,
+            card: &LoadedCard,
+            plan: &SyncPlan,
+            cancel: Option<Arc<AtomicBool>>,
+            report: &mut dyn FnMut(Progress),
+        ) -> Result<SyncOutcome> {
+            let mut context = Apply {
+                scopes: &self.scopes,
+                card,
+                app_data: &self.app_data,
+                cancel,
+                report,
+            };
+            apply_plan(&mut context, plan)
+        }
+
+        fn verified_after(&self, plan: &SyncPlan, tamper: impl Fn(&Self)) -> bool {
+            self.apply(&self.card(), plan, None, &mut |progress| {
+                if progress.phase == Phase::Verifying {
+                    tamper(self);
+                }
+            })
+            .expect("apply")
+            .verified
         }
 
         fn snapshot(&self) -> BTreeMap<String, Vec<u8>> {
@@ -783,10 +807,9 @@ mod tests {
     }
 
     #[test]
-    fn a_sync_clears_conversions_and_pad_tables_an_earlier_sync_left_behind() {
+    fn a_sync_clears_conversions_an_earlier_sync_left_behind() {
         let f = fixture(2);
         std::fs::write(f.samples.join("A0000006.padbandit-tmp"), b"half a sample").expect("write");
-        std::fs::write(f.samples.join("PAD_INFO.padbandit-tmp"), b"half a table").expect("write");
 
         f.run(&plan(vec![settings(0)]));
 
@@ -847,18 +870,88 @@ mod tests {
     }
 
     #[test]
-    fn a_card_with_no_room_for_the_pad_table_is_refused_before_any_sample_changes() {
+    fn a_pad_table_that_cannot_be_opened_for_writing_is_refused_before_any_sample_changes() {
         let f = fixture(2);
         let source = f.source("kick.wav", 800);
-        std::fs::create_dir(f.samples.join("PAD_INFO.padbandit-tmp")).expect("block the table");
-        let pad_info_before = f.pad_info();
+        let card = f.card();
+        let table = f.samples.join(PAD_INFO_FILE_NAME);
+        std::fs::remove_file(&table).expect("remove the table");
+        std::fs::create_dir(&table).expect("block the table");
 
-        f.attempt(&plan(vec![write(5, source), deleted(1)]))
-            .expect_err("no room for the table");
+        f.apply(
+            &card,
+            &plan(vec![write(5, source), deleted(1)]),
+            None,
+            &mut |_| {},
+        )
+        .expect_err("the table cannot be opened");
 
         assert_eq!(wav_files(&f.samples), 2);
         assert!(f.samples.join(sample_file_name(1)).exists());
-        assert_eq!(f.pad_info(), pad_info_before);
+        assert_eq!(f.strays(), 0);
+    }
+
+    #[test]
+    fn each_slot_is_recorded_on_the_card_before_the_next_one_starts() {
+        let f = fixture(2);
+        let sync = plan(vec![
+            write(5, f.source("kick.wav", 800)),
+            write(6, f.source("snare.wav", 800)),
+        ]);
+        let mut mid_sync = None;
+
+        f.apply(&f.card(), &sync, None, &mut |progress| {
+            if progress.slot == Some(6) && progress.slots_done == 1 {
+                let card = read_card(&f.scopes, &f.card_root).expect("read mid-sync");
+                mid_sync = Some((card.records()[5], card.state().slots[5].sample.is_some()));
+            }
+        })
+        .expect("apply");
+
+        let (record, has_file) = mid_sync.expect("the second slot started");
+        assert_eq!(record.original_end, 512 + 800 * 4);
+        assert!(has_file);
+    }
+
+    #[test]
+    fn a_pad_whose_file_is_named_in_lower_case_keeps_its_new_sample() {
+        let f = fixture(2);
+        std::fs::rename(
+            f.samples.join(sample_file_name(1)),
+            f.samples.join("a0000002.wav"),
+        )
+        .expect("rename");
+
+        let outcome = f.run(&plan(vec![write(1, f.source("kick.wav", 800))])).0;
+
+        assert!(outcome.failures.is_empty());
+        assert!(outcome.verified);
+        let landed = std::fs::read(f.samples.join(sample_file_name(1))).expect("read");
+        assert_eq!(landed.len(), 512 + 800 * 4);
+    }
+
+    #[test]
+    fn verification_fails_when_an_untouched_record_differs_from_what_was_written() {
+        let f = fixture(2);
+
+        let verified = f.verified_after(&plan(vec![write(5, f.source("kick.wav", 800))]), |f| {
+            let mut table = f.pad_info();
+            table[100 * 32 + 16] ^= 1;
+            std::fs::write(f.samples.join(PAD_INFO_FILE_NAME), table).expect("tamper");
+        });
+
+        assert!(!verified);
+    }
+
+    #[test]
+    fn verification_fails_when_a_recorded_sample_is_missing() {
+        let f = fixture(2);
+
+        let verified = f.verified_after(&plan(vec![write(5, f.source("kick.wav", 800))]), |f| {
+            std::fs::remove_file(f.samples.join(sample_file_name(5))).expect("remove");
+        });
+
+        assert!(!verified);
     }
 
     #[test]
@@ -911,6 +1004,21 @@ mod tests {
         let block_align = 4;
         assert_eq!(record.user_start, 512 + 11_025 * block_align);
         assert_eq!(record.user_end, 512 + 33_075 * block_align);
+    }
+
+    #[test]
+    fn a_sample_whose_waveform_was_never_opened_plays_whole_rather_than_silent() {
+        let f = fixture(2);
+
+        f.run(&plan(vec![write(
+            5,
+            f.source_at("kick.wav", 48_000, 48_000),
+        )]));
+
+        let record = f.card().records()[5];
+        assert_eq!(record.user_start, 512);
+        assert_eq!(record.user_end, record.original_end);
+        assert!(record.user_end > record.user_start);
     }
 
     #[test]

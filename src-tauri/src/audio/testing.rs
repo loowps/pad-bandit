@@ -80,6 +80,38 @@ fn write_wav_raw(
     writer.flush().expect("flush");
 }
 
+pub const IMA_ADPCM_FRAMES_PER_BLOCK: u32 = 505;
+
+pub fn write_ima_adpcm_silence_wav(path: &Path, sample_rate: u32, blocks: u32) {
+    const IMA_ADPCM_FORMAT: u16 = 0x0011;
+    const BLOCK_ALIGN: u16 = 256;
+    let data_length = blocks * u32::from(BLOCK_ALIGN);
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(52 + data_length).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&20u32.to_le_bytes());
+    bytes.extend_from_slice(&IMA_ADPCM_FORMAT.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
+    bytes.extend_from_slice(&sample_rate.to_le_bytes());
+    bytes.extend_from_slice(
+        &(sample_rate * u32::from(BLOCK_ALIGN) / IMA_ADPCM_FRAMES_PER_BLOCK).to_le_bytes(),
+    );
+    bytes.extend_from_slice(&BLOCK_ALIGN.to_le_bytes());
+    bytes.extend_from_slice(&4u16.to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes());
+    bytes.extend_from_slice(&(IMA_ADPCM_FRAMES_PER_BLOCK as u16).to_le_bytes());
+    bytes.extend_from_slice(b"fact");
+    bytes.extend_from_slice(&4u32.to_le_bytes());
+    bytes.extend_from_slice(&(blocks * IMA_ADPCM_FRAMES_PER_BLOCK).to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data_length.to_le_bytes());
+    bytes.resize(bytes.len() + data_length as usize, 0);
+
+    std::fs::write(path, bytes).expect("write adpcm wav");
+}
+
 pub fn write_ramp_wav(path: &Path, sample_rate: u32, frames: u32, channels: u16) {
     write_wav_raw(path, sample_rate, frames, channels, |frame| frame as i16);
 }

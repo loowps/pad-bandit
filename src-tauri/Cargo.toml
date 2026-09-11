@@ -23,12 +23,16 @@ dunce = "1"
 cpal = "0.18.2"
 rubato = "5.0.0"
 rtrb = "0.4.0"
-symphonia = { version = "0.6.1", features = [
+# all-meta stays: without the ID3/APE readers the probe scans a tag byte by byte for an MP3 sync word
+symphonia = { version = "0.6.1", default-features = false, features = [
+    "opt-simd",
+    "all-meta",
     "wav",
     "aiff",
+    "pcm",
+    "adpcm",
     "mp3",
     "flac",
-    "pcm",
     "ogg",
     "vorbis",
 ] }

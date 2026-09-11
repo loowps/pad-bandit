@@ -8,6 +8,7 @@
   "outsideReadableScope",
   "outsideWritableScope",
   "padInfoTooShort",
+  "preflightFailed",
   "reveal",
   "serde",
   "syncInProgress",
