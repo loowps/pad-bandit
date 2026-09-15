@@ -46,7 +46,7 @@ const onScreen = computed(() => (notices.isOpen ? [] : notices.toasts))
   position: fixed;
   right: 1rem;
   bottom: calc(var(--bar-height) + 0.5rem);
-  z-index: 20;
+  z-index: var(--layer-toast);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

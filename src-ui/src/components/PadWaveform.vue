@@ -389,6 +389,7 @@ function endDrag(event: PointerEvent): void {
 <style scoped>
 .waveform {
   position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: center;

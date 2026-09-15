@@ -146,6 +146,7 @@ function problemText(problem: Problem): string {
 .scrim {
   position: fixed;
   inset: 0;
+  z-index: var(--layer-dialog);
   display: grid;
   place-items: center;
   background: rgb(0 0 0 / 45%);

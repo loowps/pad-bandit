@@ -73,7 +73,7 @@ function nudge(offset: number): void {
 <style scoped>
 .divider {
   position: relative;
-  z-index: 1;
+  z-index: var(--layer-raised);
   flex: 0 0 1px;
   cursor: col-resize;
   background: var(--panel-border);
