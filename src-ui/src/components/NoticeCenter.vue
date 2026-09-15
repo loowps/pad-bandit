@@ -147,7 +147,7 @@ onKeyStroke('Escape', () => notices.close())
   position: absolute;
   right: 0;
   bottom: calc(var(--control-height) + 0.5rem);
-  z-index: 21;
+  z-index: var(--layer-popover);
   display: flex;
   flex-direction: column;
   width: min(28rem, calc(100vw - 2rem));

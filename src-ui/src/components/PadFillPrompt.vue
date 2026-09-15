@@ -57,6 +57,7 @@ const headline = computed(() => {
 .scrim {
   position: fixed;
   inset: 0;
+  z-index: var(--layer-dialog);
   display: grid;
   align-content: end;
   justify-items: center;

@@ -53,7 +53,7 @@ useDialog(surface, () => about.close())
 .scrim {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: var(--layer-dialog);
   display: grid;
   place-items: center;
   background: var(--wave-shade);

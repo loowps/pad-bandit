@@ -125,7 +125,7 @@ useEventListener(window, 'scroll', hideContextMenu, true)
 <style scoped>
 .menu {
   position: fixed;
-  z-index: 40;
+  z-index: var(--layer-menu);
   display: flex;
   flex-direction: column;
   min-width: 11rem;
