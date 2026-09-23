@@ -49,6 +49,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: End-to-end tests
+        timeout-minutes: 10
         run: pnpm test:e2e
 
       - name: Keep the Playwright report of a failed run
