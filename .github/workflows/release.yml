@@ -58,10 +58,3 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Pad Bandit ${{ github.ref_name }}
           releaseDraft: true
-          prerelease: true
-          releaseBody: |
-            Early alpha. Back up your SD card before the first sync.
-
-            The builds are not code-signed yet:
-            - **Windows**: SmartScreen warns about an unknown publisher. Choose *More info* → *Run anyway*.
-            - **macOS**: the first launch is blocked. Right-click the app → *Open*, or allow it under System Settings → Privacy & Security.
